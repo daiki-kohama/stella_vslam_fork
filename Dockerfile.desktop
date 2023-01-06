@@ -217,7 +217,7 @@ RUN set -x && \
   mkdir -p build && \
   cd build && \
   cmake \
-    -DUSE_PANGOLIN_VIEWER=ON \
+    -DUSE_PANGOLIN_VIEWER=OFF \
     -DBUILD_EXAMPLES=ON \
     -DUSE_STACK_TRACE_LOGGER=ON \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -228,3 +228,15 @@ RUN set -x && \
 
 WORKDIR /stella_vslam/build/
 ENTRYPOINT ["/bin/bash"]
+
+RUN mkdir opt
+RUN apt-get update -y -qq &&\
+apt-get install -y -qq \
+vim \
+libbz2-dev \
+libreadline-dev \
+ncurses-dev \
+libffi-dev \
+libssl-dev
+RUN apt-get update && apt install -y tzdata && apt-get clean && rm -rf /var/lib/apt/lists/*
+ENV TZ Asia/Tokyo
