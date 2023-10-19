@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import threading
 import os
 import yaml
@@ -49,8 +50,9 @@ def exec_openvslam(mapDir):
     #print(configData)
     #print("\n",configData.items())
     #print("./run_video_slam",  "-v", os.path.join("..", "vocab" ,"orb_vocab.fbow"), "-m", os.path.join("..", "media", "video", videoPath), "-c", os.path.join("..", "configurations", configyaml), "--frame-skip", str(frame_skip), "--log-level=debug", "-o", mapName)
-    exec = subprocess.Popen(["./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDir, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + mapName],
-                            shell=True, encoding='UTF-8', stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+    command = ["./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDir, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + mapName]
+    #command = ["./run_video_slam", "-v", os.path.join("..", "vocab" ,"orb_vocab.fbow"), "-m", videoPath, "-c", os.path.join(mapDir, "config.yaml"), "--frame-skip", str(frame_skip), "-s", str(start_time), "--log-level=debug", "-o", mapName]
+    exec = subprocess.Popen(command, shell=True, encoding='UTF-8', stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
     with open(logPath, "a") as file:
         file.write("-------------------------------\n")
         file.write("./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDir, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + "map.msg")
@@ -95,6 +97,8 @@ if __name__ == "__main__":
             pass
         os.chmod(os.path.join(checkDir, "openvslam.txt"), 0o777)
     exec_mapDirs = []
+    print(datetime.datetime.now() + datetime.timedelta(hours=9))
+    print("start check_openvslam.py")
     while True:
         start_exec_mapDirs = []
         with open(os.path.join(checkDir, "openvslam.txt"), "r") as file:
@@ -109,14 +113,18 @@ if __name__ == "__main__":
             exec_mapDirs.append(start_exec_mapDir)
             t = threading.Thread(target=exec_openvslam, args=(start_exec_mapDir,))
             t.start()
+            print(datetime.datetime.now() + datetime.timedelta(hours=9))
+            print("start VSLAM mapDir :", start_exec_mapDir)
 
         for exec_mapDir in exec_mapDirs:
             if exec_mapDir not in mapDirs:
                 exec_mapDirs.remove(exec_mapDir)
+                print(datetime.datetime.now() + datetime.timedelta(hours=9))
+                print("end VSLAM mapDir:", exec_mapDir)
         
-        print(datetime.datetime.now() + datetime.timedelta(hours=9))
-        print("start_exec_mapDirs:", start_exec_mapDirs)
-        print("exec_mapDirs:", exec_mapDirs)
-        print("\n")
+        #print(datetime.datetime.now() + datetime.timedelta(hours=9))
+        #print("start_exec_mapDirs:", start_exec_mapDirs)
+        #print("exec_mapDirs:", exec_mapDirs)
+        #print("\n")
 
         time.sleep(3)

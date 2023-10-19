@@ -227,8 +227,14 @@ RUN set -x && \
   chmod -R 777 ./*
 
 WORKDIR /stella_vslam/build/
-ENTRYPOINT ["/bin/bash"]
+#ENTRYPOINT ["/bin/bash"]
 
+RUN apt-get clean
+ENV PYTHON_VERSION 3.9.13
+ENV HOME /root
+ENV PYTHON_ROOT $HOME/local/python-$PYTHON_VERSION
+ENV PATH $PYTHON_ROOT/bin:$PATH
+ENV PYENV_ROOT $HOME/.pyenv
 RUN mkdir opt
 RUN apt-get update -y -qq &&\
 apt-get install -y -qq \
@@ -237,6 +243,20 @@ libbz2-dev \
 libreadline-dev \
 ncurses-dev \
 libffi-dev \
-libssl-dev
+libssl-dev \
+zlib1g-dev \
+libbz2-dev \
+llvm \
+libncurses5-dev \
+libncursesw5-dev \
+xz-utils \
+tk-dev \
+liblzma-dev \
+&& git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT \
+&& $PYENV_ROOT/plugins/python-build/install.sh \
+&& /usr/local/bin/python-build -v $PYTHON_VERSION $PYTHON_ROOT \
+&& rm -rf $PYENV_ROOT
 RUN apt-get update && apt install -y tzdata && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN pip install -r ../python/requirements.txt
+ENTRYPOINT ["python", "../python/check_openvslam.py"]
 ENV TZ Asia/Tokyo
