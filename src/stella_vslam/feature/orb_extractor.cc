@@ -190,8 +190,13 @@ void orb_extractor::compute_fast_keypoints(std::vector<std::vector<cv::KeyPoint>
                 }
 
                 std::vector<cv::KeyPoint> keypts_in_cell;
+                /*
                 cv::FAST(image_pyramid_.at(level).rowRange(min_y, max_y).colRange(min_x, max_x),
                          keypts_in_cell, orb_params_->ini_fast_thr_, true);
+                         */
+                cv::Ptr<cv::ORB> orb = cv::ORB::create(1000000);
+                orb->detectAndCompute(image_pyramid_.at(level).rowRange(min_y, max_y).colRange(min_x, max_x),
+                                    cv::Mat(), keypts_in_cell, cv::noArray());
 
                 // Re-compute FAST keypoint with reduced threshold if enough keypoint was not got
                 if (keypts_in_cell.empty()) {
