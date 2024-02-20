@@ -23,6 +23,7 @@ def exec_openvslam(mapDir):
     with open(os.path.join(mapDir, "order.yaml"), "r") as file:
         orderData = yaml.safe_load(file)
     videoPath = orderData["video"]["path"]
+    cameraModel = orderData["video"]["cameraModel"]
     model = orderData["video"]["model"]
     fps = orderData["video"]["fps"]
     cols = orderData["video"]["cols"]
@@ -33,8 +34,9 @@ def exec_openvslam(mapDir):
     mapName = orderData["openvslam"]["mapName"]
     logPath = orderData["openvslam"]["logPath"]
 
+    configPath = os.path.join("..", "configurations", "iPhone15Pro.yaml" if cameraModel == "perspective" else "config.yaml" )
     #if not os.path.exists(os.path.join("..", "configurations", configyaml)):
-    with open(os.path.join("..", "configurations", "config.yaml")) as file:
+    with open(configPath) as file:
         configData = yaml.safe_load(file)
     configData["Camera"]["name"] = model
     configData["Camera"]["cols"] = cols
