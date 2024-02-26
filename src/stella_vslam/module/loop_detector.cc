@@ -6,6 +6,7 @@
 #include "stella_vslam/match/projection.h"
 #include "stella_vslam/match/robust.h"
 #include "stella_vslam/module/loop_detector.h"
+#include "stella_vslam/optimize/pose_optimizer_factory.h"
 #include "stella_vslam/solve/pnp_solver.h"
 #include "stella_vslam/util/converter.h"
 #include "stella_vslam/util/fancy_index.h"
@@ -16,7 +17,7 @@ namespace stella_vslam {
 namespace module {
 
 loop_detector::loop_detector(data::bow_database* bow_db, data::bow_vocabulary* bow_vocab, const YAML::Node& yaml_node, const bool fix_scale_in_Sim3_estimation)
-    : bow_db_(bow_db), bow_vocab_(bow_vocab), transform_optimizer_(fix_scale_in_Sim3_estimation), pose_optimizer_(),
+    : bow_db_(bow_db), bow_vocab_(bow_vocab), transform_optimizer_(fix_scale_in_Sim3_estimation), pose_optimizer_(optimize::pose_optimizer_factory::create(yaml_node)),
       loop_detector_is_enabled_(yaml_node["enabled"].as<bool>(true)),
       fix_scale_in_Sim3_estimation_(fix_scale_in_Sim3_estimation),
       num_final_matches_thr_(yaml_node["num_final_matches_threshold"].as<unsigned int>(40)),
@@ -399,17 +400,21 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
         // Resample valid elements
         const auto valid_bearings = util::resample_by_indices(cur_keyfrm_->frm_obs_.bearings_, valid_indices);
         const auto valid_keypts = util::resample_by_indices(cur_keyfrm_->frm_obs_.undist_keypts_, valid_indices);
-        const auto valid_assoc_lms = util::resample_by_indices(curr_match_lms_observed_in_cand, valid_indices);
-        eigen_alloc_vector<Vec3_t> valid_landmarks(valid_indices.size());
+        std::vector<int> octaves(valid_indices.size());
         for (unsigned int i = 0; i < valid_indices.size(); ++i) {
-            valid_landmarks.at(i) = valid_assoc_lms.at(i)->get_pos_in_world();
+            octaves.at(i) = valid_keypts.at(i).octave;
+        }
+        const auto valid_assoc_lms = util::resample_by_indices(curr_match_lms_observed_in_cand, valid_indices);
+        eigen_alloc_vector<Vec3_t> valid_points(valid_indices.size());
+        for (unsigned int i = 0; i < valid_indices.size(); ++i) {
+            valid_points.at(i) = valid_assoc_lms.at(i)->get_pos_in_world();
         }
         // Setup PnP solver
-        auto pnp_solver = std::unique_ptr<solve::pnp_solver>(new solve::pnp_solver(valid_bearings, valid_keypts, valid_landmarks,
+        auto pnp_solver = std::unique_ptr<solve::pnp_solver>(new solve::pnp_solver(valid_bearings, octaves, valid_points,
                                                                                    cur_keyfrm_->orb_params_->scale_factors_,
-                                                                                   use_fixed_seed_));
+                                                                                   10, use_fixed_seed_));
 
-        pnp_solver->find_via_ransac(30);
+        pnp_solver->find_via_ransac(30, false);
         if (!pnp_solver->solution_is_valid()) {
             spdlog::debug("solution is not valid.");
             continue;
@@ -427,9 +432,9 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
 
         // Pose optimization
         std::vector<bool> outlier_flags;
-        g2o::SE3Quat optimized_pose;
-        auto num_valid_obs = pose_optimizer_.optimize(pnp_solver->get_best_cam_pose(), cur_keyfrm_->frm_obs_, cur_keyfrm_->orb_params_, cur_keyfrm_->camera_,
-                                                      curr_match_lms_observed_in_cand, optimized_pose, outlier_flags);
+        Mat44_t optimized_pose;
+        auto num_valid_obs = pose_optimizer_->optimize(pnp_solver->get_best_cam_pose(), cur_keyfrm_->frm_obs_, cur_keyfrm_->orb_params_, cur_keyfrm_->camera_,
+                                                       curr_match_lms_observed_in_cand, optimized_pose, outlier_flags);
 
         // Discard the candidate if the number of the inliers is less than the threshold
         const int min_num_matches_after_pose_optimize = 10;
@@ -456,7 +461,7 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
         }
 
         // Projection match based on the pre-optimized camera pose
-        auto num_found = projection_matcher.match_frame_and_keyframe(util::converter::to_eigen_mat(optimized_pose), cur_keyfrm_->camera_, cur_keyfrm_->frm_obs_,
+        auto num_found = projection_matcher.match_frame_and_keyframe(optimized_pose, cur_keyfrm_->camera_, cur_keyfrm_->frm_obs_,
                                                                      cur_keyfrm_->orb_params_, curr_match_lms_observed_in_cand,
                                                                      candidate, already_found_landmarks, 10, 100);
         // Discard the candidate if the number of the inliers is less than the threshold
@@ -467,11 +472,11 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
             continue;
         }
 
-        g2o::SE3Quat optimized_pose1;
+        Mat44_t optimized_pose1;
         std::vector<bool> outlier_flags1;
-        auto num_valid_obs1 = pose_optimizer_.optimize(util::converter::to_eigen_mat(optimized_pose),
-                                                       cur_keyfrm_->frm_obs_, cur_keyfrm_->orb_params_, cur_keyfrm_->camera_,
-                                                       curr_match_lms_observed_in_cand, optimized_pose1, outlier_flags1);
+        auto num_valid_obs1 = pose_optimizer_->optimize(optimized_pose,
+                                                        cur_keyfrm_->frm_obs_, cur_keyfrm_->orb_params_, cur_keyfrm_->camera_,
+                                                        curr_match_lms_observed_in_cand, optimized_pose1, outlier_flags1);
 
         if (num_valid_obs1 < min_num_valid_obs1) {
             spdlog::debug("2. Number of inliers ({}) < threshold ({})", num_valid_obs1, min_num_valid_obs1);
@@ -487,7 +492,7 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
             already_found_landmarks1.insert(curr_match_lms_observed_in_cand.at(idx));
         }
         // Apply projection match again, then set the 2D-3D matches
-        auto num_additional = projection_matcher.match_frame_and_keyframe(util::converter::to_eigen_mat(optimized_pose1), cur_keyfrm_->camera_, cur_keyfrm_->frm_obs_,
+        auto num_additional = projection_matcher.match_frame_and_keyframe(optimized_pose1, cur_keyfrm_->camera_, cur_keyfrm_->frm_obs_,
                                                                           cur_keyfrm_->orb_params_, curr_match_lms_observed_in_cand,
                                                                           candidate, already_found_landmarks, 3, 64);
 
@@ -499,11 +504,11 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
         }
 
         // Perform optimization again
-        g2o::SE3Quat optimized_pose2;
+        Mat44_t optimized_pose2;
         std::vector<bool> outlier_flags2;
-        auto num_valid_obs2 = pose_optimizer_.optimize(util::converter::to_eigen_mat(optimized_pose1),
-                                                       cur_keyfrm_->frm_obs_, cur_keyfrm_->orb_params_, cur_keyfrm_->camera_,
-                                                       curr_match_lms_observed_in_cand, optimized_pose2, outlier_flags2);
+        auto num_valid_obs2 = pose_optimizer_->optimize(optimized_pose1,
+                                                        cur_keyfrm_->frm_obs_, cur_keyfrm_->orb_params_, cur_keyfrm_->camera_,
+                                                        curr_match_lms_observed_in_cand, optimized_pose2, outlier_flags2);
 
         // Discard if falling below the threshold
         if (num_valid_obs2 < min_num_valid_obs2) {
@@ -519,7 +524,7 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
             curr_match_lms_observed_in_cand.at(idx) = nullptr;
         }
 
-        const Mat44_t pose_1w_in_cand = util::converter::to_eigen_mat(optimized_pose2);
+        const Mat44_t pose_1w_in_cand = optimized_pose2;
         const Mat33_t rot_1w_in_cand = pose_1w_in_cand.block<3, 3>(0, 0);
         const Vec3_t trans_1w_in_cand = pose_1w_in_cand.block<3, 1>(0, 3);
         auto lms_curr = cur_keyfrm_->get_landmarks();

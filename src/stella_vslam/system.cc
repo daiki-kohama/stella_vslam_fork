@@ -200,18 +200,20 @@ void system::save_keyframe_trajectory(const std::string& path, const std::string
     resume_other_threads();
 }
 
-void system::load_map_database(const std::string& path) const {
+bool system::load_map_database(const std::string& path) const {
     pause_other_threads();
     spdlog::debug("load_map_database: {}", path);
-    map_database_io_->load(path, cam_db_, orb_params_db_, map_db_, bow_db_, bow_vocab_);
+    bool ok = map_database_io_->load(path, cam_db_, orb_params_db_, map_db_, bow_db_, bow_vocab_);
     resume_other_threads();
+    return ok;
 }
 
-void system::save_map_database(const std::string& path) const {
+bool system::save_map_database(const std::string& path) const {
     pause_other_threads();
     spdlog::debug("save_map_database: {}", path);
-    map_database_io_->save(path, cam_db_, orb_params_db_, map_db_);
+    bool ok = map_database_io_->save(path, cam_db_, orb_params_db_, map_db_);
     resume_other_threads();
+    return ok;
 }
 
 const std::shared_ptr<publish::map_publisher> system::get_map_publisher() const {
@@ -272,8 +274,15 @@ void system::abort_loop_BA() {
     global_optimizer_->abort_loop_BA();
 }
 
+void system::enable_temporal_mapping() {
+    map_db_->set_fixed_keyframe_id_threshold();
+}
+
 data::frame system::create_monocular_frame(const cv::Mat& img, const double timestamp, const cv::Mat& mask) {
     // color conversion
+    if (!camera_->is_valid_shape(img)) {
+        spdlog::warn("preprocess: Input image size is invalid");
+    }
     cv::Mat img_gray = img;
     util::convert_to_grayscale(img_gray, camera_->color_order_);
 
@@ -307,6 +316,12 @@ data::frame system::create_monocular_frame(const cv::Mat& img, const double time
 
 data::frame system::create_stereo_frame(const cv::Mat& left_img, const cv::Mat& right_img, const double timestamp, const cv::Mat& mask) {
     // color conversion
+    if (!camera_->is_valid_shape(left_img)) {
+        spdlog::warn("preprocess: Input image size is invalid");
+    }
+    if (!camera_->is_valid_shape(right_img)) {
+        spdlog::warn("preprocess: Input image size is invalid");
+    }
     cv::Mat img_gray = left_img;
     cv::Mat right_img_gray = right_img;
     util::convert_to_grayscale(img_gray, camera_->color_order_);
@@ -360,6 +375,12 @@ data::frame system::create_stereo_frame(const cv::Mat& left_img, const cv::Mat& 
 
 data::frame system::create_RGBD_frame(const cv::Mat& rgb_img, const cv::Mat& depthmap, const double timestamp, const cv::Mat& mask) {
     // color and depth scale conversion
+    if (!camera_->is_valid_shape(rgb_img)) {
+        spdlog::warn("preprocess: Input image size is invalid");
+    }
+    if (!camera_->is_valid_shape(depthmap)) {
+        spdlog::warn("preprocess: Input image size is invalid");
+    }
     cv::Mat img_gray = rgb_img;
     cv::Mat img_depth = depthmap;
     util::convert_to_grayscale(img_gray, camera_->color_order_);
@@ -417,16 +438,28 @@ data::frame system::create_RGBD_frame(const cv::Mat& rgb_img, const cv::Mat& dep
 
 std::shared_ptr<Mat44_t> system::feed_monocular_frame(const cv::Mat& img, const double timestamp, const cv::Mat& mask) {
     assert(camera_->setup_type_ == camera::setup_type_t::Monocular);
+    if (img.empty()) {
+        spdlog::warn("preprocess: empty image");
+        return nullptr;
+    }
     return feed_frame(create_monocular_frame(img, timestamp, mask), img);
 }
 
 std::shared_ptr<Mat44_t> system::feed_stereo_frame(const cv::Mat& left_img, const cv::Mat& right_img, const double timestamp, const cv::Mat& mask) {
     assert(camera_->setup_type_ == camera::setup_type_t::Stereo);
+    if (left_img.empty() || right_img.empty()) {
+        spdlog::warn("preprocess: empty image");
+        return nullptr;
+    }
     return feed_frame(create_stereo_frame(left_img, right_img, timestamp, mask), left_img);
 }
 
 std::shared_ptr<Mat44_t> system::feed_RGBD_frame(const cv::Mat& rgb_img, const cv::Mat& depthmap, const double timestamp, const cv::Mat& mask) {
     assert(camera_->setup_type_ == camera::setup_type_t::RGBD);
+    if (rgb_img.empty() || depthmap.empty()) {
+        spdlog::warn("preprocess: empty image");
+        return nullptr;
+    }
     return feed_frame(create_RGBD_frame(rgb_img, depthmap, timestamp, mask), rgb_img);
 }
 

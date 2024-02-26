@@ -21,13 +21,23 @@ namespace data {
 std::mutex map_database::mtx_database_;
 
 map_database::map_database(unsigned int min_num_shared_lms)
-    : min_num_shared_lms_(min_num_shared_lms) {
+    : fixed_keyframe_id_threshold_(0), min_num_shared_lms_(min_num_shared_lms) {
     spdlog::debug("CONSTRUCT: data::map_database");
 }
 
 map_database::~map_database() {
     clear();
     spdlog::debug("DESTRUCT: data::map_database");
+}
+
+void map_database::set_fixed_keyframe_id_threshold() {
+    std::lock_guard<std::mutex> lock(mtx_map_access_);
+    fixed_keyframe_id_threshold_ = next_keyframe_id_;
+}
+
+unsigned int map_database::get_fixed_keyframe_id_threshold() {
+    std::lock_guard<std::mutex> lock(mtx_map_access_);
+    return fixed_keyframe_id_threshold_;
 }
 
 void map_database::add_keyframe(const std::shared_ptr<keyframe>& keyfrm) {
@@ -231,11 +241,13 @@ void map_database::clear() {
     keyframes_.clear();
     last_inserted_keyfrm_ = nullptr;
     local_landmarks_.clear();
+    spanning_roots_.clear();
 
     frm_stats_.clear();
 
     next_keyframe_id_ = 0;
     next_landmark_id_ = 0;
+    fixed_keyframe_id_threshold_ = 0;
 
     spdlog::info("clear map database");
 }
@@ -725,9 +737,7 @@ bool map_database::bind_association_to_stmt(sqlite3_stmt* stmt,
                                             const std::shared_ptr<keyframe>& keyfrm) const {
     int ret = SQLITE_ERROR;
     int column_id = 1;
-    if (ret == SQLITE_OK || ret == SQLITE_DONE) {
-        ret = sqlite3_bind_int64(stmt, column_id++, keyfrm->id_);
-    }
+    ret = sqlite3_bind_int64(stmt, column_id++, keyfrm->id_);
     if (ret == SQLITE_OK) {
         // extract landmark IDs
         auto lms = keyfrm->get_landmarks();

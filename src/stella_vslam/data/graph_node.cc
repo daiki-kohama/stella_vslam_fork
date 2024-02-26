@@ -66,7 +66,7 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
     const auto owner_keyfrm = owner_keyfrm_.lock();
     const auto landmarks = owner_keyfrm->get_landmarks();
 
-    id_ordered_map<std::weak_ptr<keyframe>, unsigned int> keyfrm_and_num_shared_lms;
+    id_ordered_map<std::weak_ptr<keyframe>, unsigned int> keyfrm_to_num_shared_lms;
 
     for (const auto& lm : landmarks) {
         if (!lm) {
@@ -89,11 +89,11 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
                 continue;
             }
             // count up number of shared landmarks of `keyfrm`
-            keyfrm_and_num_shared_lms[keyfrm]++;
+            keyfrm_to_num_shared_lms[keyfrm]++;
         }
     }
 
-    if (keyfrm_and_num_shared_lms.empty()) {
+    if (keyfrm_to_num_shared_lms.empty()) {
         return;
     }
 
@@ -102,8 +102,8 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
 
     // vector for sorting
     std::vector<std::pair<unsigned int, std::shared_ptr<keyframe>>> num_shared_lms_and_covisibility_pairs;
-    num_shared_lms_and_covisibility_pairs.reserve(keyfrm_and_num_shared_lms.size());
-    for (const auto& keyfrm_and_num_shared_lms : keyfrm_and_num_shared_lms) {
+    num_shared_lms_and_covisibility_pairs.reserve(keyfrm_to_num_shared_lms.size());
+    for (const auto& keyfrm_and_num_shared_lms : keyfrm_to_num_shared_lms) {
         auto keyfrm = keyfrm_and_num_shared_lms.first.lock();
         const auto num_shared_lms = keyfrm_and_num_shared_lms.second;
 
@@ -145,7 +145,7 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
     {
         std::lock_guard<std::mutex> lock(mtx_);
 
-        connected_keyfrms_and_num_shared_lms_ = decltype(connected_keyfrms_and_num_shared_lms_)(keyfrm_and_num_shared_lms.begin(), keyfrm_and_num_shared_lms.end());
+        connected_keyfrms_and_num_shared_lms_ = decltype(connected_keyfrms_and_num_shared_lms_)(keyfrm_to_num_shared_lms.begin(), keyfrm_to_num_shared_lms.end());
 
         ordered_covisibilities_ = ordered_covisibilities;
         ordered_num_shared_lms_ = ordered_num_shared_lms;
@@ -364,9 +364,9 @@ void graph_node::recover_spanning_connections() {
     spanning_parent_.lock()->graph_node_->erase_spanning_child(owner_keyfrm_.lock());
 }
 
-std::set<std::shared_ptr<keyframe>> graph_node::get_spanning_children() const {
+id_ordered_set<std::shared_ptr<keyframe>> graph_node::get_spanning_children() const {
     std::lock_guard<std::mutex> lock(mtx_);
-    std::set<std::shared_ptr<keyframe>> locked_spanning_children;
+    id_ordered_set<std::shared_ptr<keyframe>> locked_spanning_children;
     for (const auto& keyfrm : spanning_children_) {
         locked_spanning_children.insert(keyfrm.lock());
     }
@@ -458,8 +458,8 @@ template<typename T, typename U>
 std::vector<std::shared_ptr<keyframe>> graph_node::extract_intersection(const T& keyfrms_1, const U& keyfrms_2) {
     std::vector<std::shared_ptr<keyframe>> intersection;
     intersection.reserve(std::min(keyfrms_1.size(), keyfrms_2.size()));
-    for (const auto keyfrm_1 : keyfrms_1) {
-        for (const auto keyfrm_2 : keyfrms_2) {
+    for (const auto& keyfrm_1 : keyfrms_1) {
+        for (const auto& keyfrm_2 : keyfrms_2) {
             if (*keyfrm_1 == *keyfrm_2) {
                 intersection.push_back(keyfrm_1);
             }

@@ -80,10 +80,10 @@ public:
     void save_keyframe_trajectory(const std::string& path, const std::string& format) const;
 
     //! Load the map database from file
-    void load_map_database(const std::string& path) const;
+    bool load_map_database(const std::string& path) const;
 
     //! Save the map database to file
-    void save_map_database(const std::string& path) const;
+    bool save_map_database(const std::string& path) const;
 
     //! Get the map publisher
     const std::shared_ptr<publish::map_publisher> get_map_publisher() const;
@@ -120,6 +120,9 @@ public:
 
     //! Abort the loop BA externally
     void abort_loop_BA();
+
+    //! Enable temporal mapping
+    void enable_temporal_mapping();
 
     //-----------------------------------------
     // data feeding methods
