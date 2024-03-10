@@ -7,6 +7,7 @@ import shutil
 import time
 import datetime
 import sys
+import cv2
 
 def get_splitedFilePath(filePath):
     filePath_splited = filePath.split(".")
@@ -33,6 +34,7 @@ def exec_openvslam(mapDir):
     start_time = orderData["openvslam"]["params"]["start_time"]
     mapName = orderData["openvslam"]["mapName"]
     logPath = orderData["openvslam"]["logPath"]
+    use_sharpened_video = orderData["openvslam"]["use_sharpened_video"]
 
     configPath = os.path.join("..", "configurations", "iPhone15Pro.yaml" if cameraModel == "perspective" else "config.yaml" )
     #if not os.path.exists(os.path.join("..", "configurations", configyaml)):
@@ -49,6 +51,21 @@ def exec_openvslam(mapDir):
     with open(os.path.join(mapDir, "config.yaml"), "w") as file:
         yaml.dump(configData, file, allow_unicode=True)
     
+    if use_sharpened_video:
+        wait_time = 0
+        while True:
+            try:
+                cap = cv2.VideoCapture(videoPath)
+                if cap.isOpened():
+                    break
+            except:
+                pass
+            time.sleep(1)
+            wait_time += 1
+            if wait_time % 60 == 0:
+                with open(logPath, "a") as file:
+                    file.write(f"waiting about {wait_time%60} minutes for sharpened video f{videoPath}\n")
+
     #print(configData)
     #print("\n",configData.items())
     #print("./run_video_slam",  "-v", os.path.join("..", "vocab" ,"orb_vocab.fbow"), "-m", os.path.join("..", "media", "video", videoPath), "-c", os.path.join("..", "configurations", configyaml), "--frame-skip", str(frame_skip), "--log-level=debug", "-o", mapName)
