@@ -36,7 +36,24 @@ def exec_openvslam(mapDir):
     logPath = orderData["openvslam"]["logPath"]
     use_sharpened_video = orderData["openvslam"]["use_sharpened_video"]
 
-    configPath = os.path.join("..", "configurations", "iPhone15Pro.yaml" if cameraModel == "perspective" else "config.yaml" )
+    if os.path.islink(videoPath):
+        realpath = os.path.realpath(videoPath)
+        videoPath = os.path.join("..", "local", *(realpath.split(os.sep)[3:]))
+
+    if cameraModel == "equirectangular":
+        configPath = os.path.join("..", "configurations", "config.yaml")
+    elif cameraModel == "perspective":
+        if "iPhone" in model:
+            if "15" in model and "Pro" in model:
+                if rows == 1920:
+                    configPath = os.path.join("..", "configurations", "iPhone15ProHD.yaml")
+            elif "12" in model and "Pro" in model:
+                if rows == 1920:
+                    configPath = os.path.join("..", "configurations", "iPhone12ProHD.yaml")
+                elif rows == 3840:
+                    configPath = os.path.join("..", "configurations", "iPhone12Pro4k.yaml")
+            else:
+                configPath = os.path.join("..", "configurations", "iPhone15ProHD.yaml")
     #if not os.path.exists(os.path.join("..", "configurations", configyaml)):
     with open(configPath) as file:
         configData = yaml.safe_load(file)
@@ -61,10 +78,10 @@ def exec_openvslam(mapDir):
             except:
                 pass
             time.sleep(1)
-            wait_time += 1
             if wait_time % 60 == 0:
                 with open(logPath, "a") as file:
-                    file.write(f"waiting about {wait_time%60} minutes for sharpened video f{videoPath}\n")
+                    file.write(f"waiting about {wait_time//60} minutes for sharpened video {videoPath}\n")
+            wait_time += 1
 
     #print(configData)
     #print("\n",configData.items())
