@@ -19,9 +19,10 @@ def get_splitedFilePath(filePath):
             fileName = fileName + filePath_splited[i] + "."
         return fileName[:-1], "."+filePath_splited[-1]
 
-def exec_openvslam(mapDir):
-    print("PATH", os.path.join(mapDir, "order.yaml")) 
-    with open(os.path.join(mapDir, "order.yaml"), "r") as file:
+def exec_openvslam(media_root, mapDir):
+    mapDirReal = os.path.join(media_root, mapDir)
+    print("PATH", os.path.join(mapDirReal, "order.yaml")) 
+    with open(os.path.join(mapDirReal, "order.yaml"), "r") as file:
         orderData = yaml.safe_load(file)
     videoPath = orderData["video"]["path"]
     cameraModel = orderData["video"]["cameraModel"]
@@ -65,7 +66,7 @@ def exec_openvslam(mapDir):
         configData.pop("KeyframeInserter")
     else:
         configData["KeyframeInserter"]["max_interval"] = keyframe_maxinterval
-    with open(os.path.join(mapDir, "config.yaml"), "w") as file:
+    with open(os.path.join(mapDirReal, "config.yaml"), "w") as file:
         yaml.dump(configData, file, allow_unicode=True)
     
     if use_sharpened_video:
@@ -86,12 +87,12 @@ def exec_openvslam(mapDir):
     #print(configData)
     #print("\n",configData.items())
     #print("./run_video_slam",  "-v", os.path.join("..", "vocab" ,"orb_vocab.fbow"), "-m", os.path.join("..", "media", "video", videoPath), "-c", os.path.join("..", "configurations", configyaml), "--frame-skip", str(frame_skip), "--log-level=debug", "-o", mapName)
-    command = ["./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDir, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + mapName]
+    command = ["./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDirReal, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + mapName]
     #command = ["./run_video_slam", "-v", os.path.join("..", "vocab" ,"orb_vocab.fbow"), "-m", videoPath, "-c", os.path.join(mapDir, "config.yaml"), "--frame-skip", str(frame_skip), "-s", str(start_time), "--log-level=debug", "-o", mapName]
     exec = subprocess.Popen(command, shell=True, encoding='UTF-8', stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
     with open(logPath, "a") as file:
         file.write("-------------------------------\n")
-        file.write("./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDir, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + "map.msg")
+        file.write("./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDirReal, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + "map.msg")
         file.write("\n")
     while True:
         line = exec.stdout.readline()
@@ -107,9 +108,9 @@ def exec_openvslam(mapDir):
         while True:
             if os.path.exists(mapName):
                 break
-        shutil.move(mapName, os.path.join(mapDir, mapName))
+        shutil.move(mapName, os.path.join(mapDirReal, mapName))
 
-    with open(os.path.join(mapDir, "order.yaml"), "r+") as file:
+    with open(os.path.join(mapDirReal, "order.yaml"), "r+") as file:
         orderData = yaml.safe_load(file)
         orderData["openvslam"]["did"] = True
         file.seek(0)
@@ -147,7 +148,7 @@ if __name__ == "__main__":
         
         for start_exec_mapDir in start_exec_mapDirs:
             exec_mapDirs.append(start_exec_mapDir)
-            t = threading.Thread(target=exec_openvslam, args=(start_exec_mapDir,))
+            t = threading.Thread(target=exec_openvslam, args=(os.path.join("..", "media"), start_exec_mapDir,))
             t.start()
             print(datetime.datetime.now() + datetime.timedelta(hours=9))
             print("start VSLAM mapDir :", start_exec_mapDir)
