@@ -25,6 +25,7 @@ def exec_openvslam(media_root, mapDir):
     with open(os.path.join(mapDirReal, "order.yaml"), "r") as file:
         orderData = yaml.safe_load(file)
     videoPath = orderData["video"]["path"]
+    videoPathReal = os.path.join(media_root, videoPath)
     cameraModel = orderData["video"]["cameraModel"]
     model = orderData["video"]["model"]
     fps = orderData["video"]["fps"]
@@ -35,11 +36,12 @@ def exec_openvslam(media_root, mapDir):
     start_time = orderData["openvslam"]["params"]["start_time"]
     mapName = orderData["openvslam"]["mapName"]
     logPath = orderData["openvslam"]["logPath"]
+    logPathReal = os.path.join(media_root, logPath)
     use_sharpened_video = orderData["openvslam"]["use_sharpened_video"]
 
-    if os.path.islink(videoPath):
-        realpath = os.path.realpath(videoPath)
-        videoPath = os.path.join("..", "local", *(realpath.split(os.sep)[3:]))
+    if os.path.islink(videoPathReal):
+        realpath = os.path.realpath(videoPathReal)
+        videoPathReal = os.path.join("..", "local", *(realpath.split(os.sep)[3:]))
 
     if cameraModel == "equirectangular":
         configPath = os.path.join("..", "configurations", "config.yaml")
@@ -73,34 +75,30 @@ def exec_openvslam(media_root, mapDir):
         wait_time = 0
         while True:
             try:
-                cap = cv2.VideoCapture(videoPath)
+                cap = cv2.VideoCapture(videoPathReal)
                 if cap.isOpened():
                     break
             except:
                 pass
             time.sleep(1)
             if wait_time % 60 == 0:
-                with open(logPath, "a") as file:
-                    file.write(f"waiting about {wait_time//60} minutes for sharpened video {videoPath}\n")
+                with open(logPathReal, "a") as file:
+                    file.write(f"waiting about {wait_time//60} minutes for sharpened video {videoPathReal}\n")
             wait_time += 1
 
-    #print(configData)
-    #print("\n",configData.items())
-    #print("./run_video_slam",  "-v", os.path.join("..", "vocab" ,"orb_vocab.fbow"), "-m", os.path.join("..", "media", "video", videoPath), "-c", os.path.join("..", "configurations", configyaml), "--frame-skip", str(frame_skip), "--log-level=debug", "-o", mapName)
-    command = ["./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDirReal, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + mapName]
-    #command = ["./run_video_slam", "-v", os.path.join("..", "vocab" ,"orb_vocab.fbow"), "-m", videoPath, "-c", os.path.join(mapDir, "config.yaml"), "--frame-skip", str(frame_skip), "-s", str(start_time), "--log-level=debug", "-o", mapName]
+    command = ["./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPathReal + " -c " + os.path.join(mapDirReal, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + mapName]
     exec = subprocess.Popen(command, shell=True, encoding='UTF-8', stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
-    with open(logPath, "a") as file:
+    with open(logPathReal, "a") as file:
         file.write("-------------------------------\n")
-        file.write("./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPath + " -c " + os.path.join(mapDirReal, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + "map.msg")
+        file.write(" ".join(command))
         file.write("\n")
     while True:
         line = exec.stdout.readline()
-        with open(logPath, "a") as file:
+        with open(logPathReal, "a") as file:
             file.write(line)
         if exec.poll() is not None:
             break
-    with open(logPath, "a") as file:
+    with open(logPathReal, "a") as file:
         file.write("-------------------------------\n")
     #exec.wait()
 
