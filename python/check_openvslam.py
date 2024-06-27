@@ -129,7 +129,7 @@ if __name__ == "__main__":
         os.chmod(checkDir, 0o777)
     if not os.path.exists(os.path.join(checkDir, "openvslam.txt")):
         with open(os.path.join(checkDir, "openvslam.txt"), "w") as file:
-            pass
+            file.write("")
         os.chmod(os.path.join(checkDir, "openvslam.txt"), 0o777)
     exec_mapDirs = []
     print(datetime.datetime.now() + datetime.timedelta(hours=9))
