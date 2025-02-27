@@ -58,6 +58,7 @@ bool initializer::get_use_fixed_seed() const {
 
 bool initializer::initialize(const camera::setup_type_t setup_type,
                              data::bow_vocabulary* bow_vocab, data::frame& curr_frm) {
+    std::cout << "initializer.state_ = " << static_cast<int32_t>(state_) << std::endl;
     switch (setup_type) {
         case camera::setup_type_t::Monocular: {
             // construct an initializer if not constructed
@@ -107,10 +108,12 @@ bool initializer::initialize(const camera::setup_type_t setup_type,
 }
 
 void initializer::create_initializer(data::frame& curr_frm) {
+    std::cout << "create_initializer" << std::endl;
     // set the initial frame
     init_frm_ = data::frame(curr_frm);
 
     // initialize the previously matched coordinates
+    // 特徴点の座標をprev_matched_coords_に格納
     prev_matched_coords_.resize(init_frm_.frm_obs_.undist_keypts_.size());
     for (unsigned int i = 0; i < init_frm_.frm_obs_.undist_keypts_.size(); ++i) {
         prev_matched_coords_.at(i) = init_frm_.frm_obs_.undist_keypts_.at(i).pt;
@@ -144,6 +147,7 @@ void initializer::create_initializer(data::frame& curr_frm) {
 }
 
 bool initializer::try_initialize_for_monocular(data::frame& curr_frm) {
+    std::cout << "try_initialize_for_monocular" << std::endl;
     assert(state_ == initializer_state_t::Initializing);
 
     match::area matcher(0.9, true);
@@ -171,6 +175,7 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
         const auto is_triangulated = initializer_->get_triangulated_flags();
 
         // make invalid the matchings which have not been triangulated
+        // frame1の特徴点がframe2の特徴点に対応している場合、有効な3次元点が存在しない場合はマッチングを無効にする
         for (unsigned int i = 0; i < init_matches_.size(); ++i) {
             if (init_matches_.at(i) < 0) {
                 continue;
@@ -182,10 +187,18 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
         }
 
         // set the camera poses
+        // 最初のフレームの姿勢を単位行列に設定
         init_frm_.set_pose_cw(Mat44_t::Identity());
+        // 現在のフレームの姿勢を初期化
         Mat44_t cam_pose_cw = Mat44_t::Identity();
+        // 回転行列を設定
+        // 座標系的には、cur座標系からref座標系への回転行列
+        // つまり、ref座標中の点をcur座標系に変換するための回転行列
         cam_pose_cw.block<3, 3>(0, 0) = initializer_->get_rotation_ref_to_cur();
+        // 並進ベクトルを設定
+        // ref座標系から見たcur座標系の原点の位置
         cam_pose_cw.block<3, 1>(0, 3) = initializer_->get_translation_ref_to_cur();
+        // ref座標中の点をcur座標系に変換するための姿勢を設定
         curr_frm.set_pose_cw(cam_pose_cw);
 
         // destruct the initializer
@@ -231,6 +244,7 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
         lm->connect_to_keyframe(curr_keyfrm, curr_idx);
 
         // update the descriptor
+        // 一つのランドマークに対して複数の特徴量があるので、それらから最適な特徴量をランドマークの特徴量として選択
         lm->compute_descriptor();
         // update the geometry
         lm->update_mean_normal_and_obs_scale_variance();
@@ -243,6 +257,7 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
         lms.push_back(lm);
     }
 
+    // スケールが不確定かどうか
     bool indefinite_scale = true;
     for (const auto& id_mkr2d : init_keyfrm->markers_2d_) {
         if (curr_keyfrm->markers_2d_.count(id_mkr2d.first)) {
@@ -277,10 +292,13 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
     std::vector<std::shared_ptr<data::keyframe>> keyfrms{init_keyfrm, curr_keyfrm};
     global_bundle_adjuster.optimize_for_initialization(keyfrms, lms, markers);
 
+    // マーカを使ってない or curr_keyfrmに有効なマーカがなければ
     if (indefinite_scale) {
         // scale the map so that the median of depths is 1.0
+        // init_frameから見たランドマークのz座標の中央値を計算
         const auto median_depth = init_keyfrm->compute_median_depth(init_keyfrm->camera_->model_type_ == camera::model_type_t::Equirectangular);
         const auto inv_median_depth = 1.0 / median_depth;
+        // curr_keyfrmで1回以上観測されたランドマークの数がmin_num_triangulated_pts_未満 and 中央値が0未満の場合
         if (curr_keyfrm->get_num_tracked_landmarks(1) < min_num_triangulated_pts_ && median_depth < 0) {
             spdlog::info("seems to be wrong initialization, resetting");
             state_ = initializer_state_t::Wrong;

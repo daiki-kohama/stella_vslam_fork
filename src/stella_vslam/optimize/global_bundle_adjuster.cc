@@ -39,6 +39,7 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
     std::unique_ptr<g2o::BlockSolverBase> block_solver;
     auto linear_solver = g2o::make_unique<g2o::LinearSolverCSparse<g2o::BlockSolver_6_3::PoseMatrixType>>();
     block_solver = g2o::make_unique<g2o::BlockSolver_6_3>(std::move(linear_solver));
+    // Levenberg-Marquardt 法
     auto algorithm = new g2o::OptimizationAlgorithmLevenberg(std::move(block_solver));
 
     optimizer.setAlgorithm(algorithm);
@@ -48,6 +49,7 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
     }
 
     // 3. Convert each of the keyframe to the g2o vertex, then set it to the optimizer
+    // キーフレームをグラフ最適化のノードに設定する
 
     // Set the keyframes to the optimizer
     for (const auto& keyfrm : keyfrms) {
@@ -58,11 +60,15 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
             continue;
         }
 
+        // キーフレームと最初のフレームであるかどうかを示すフラグを使用して、グラフノードを作成
+        // keyfrm_vtxはフレームIDとキーフレームのpose_cw, 一定に保つかのフラグを持つ
         auto keyfrm_vtx = keyfrm_vtx_container.create_vertex(keyfrm, keyfrm->graph_node_->is_spanning_root());
         optimizer.addVertex(keyfrm_vtx);
     }
 
     // 4. Connect the vertices of the keyframe and the landmark by using reprojection edge
+    // ランドマークをグラフ最適化のノードに設定する
+    // ランドマークに紐づくキーフレームとの拘束条件を設定する
 
     // Container of the reprojection edges
     using reproj_edge_wrapper = internal::se3::reproj_edge_wrapper<data::keyframe>;
@@ -71,6 +77,7 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
 
     // Chi-squared value with significance level of 5%
     // Two degree-of-freedom (n=2)
+    // 自由度2, 有効水準0.05のカイ二乗値
     constexpr float chi_sq_2D = 5.99146;
     const float sqrt_chi_sq_2D = std::sqrt(chi_sq_2D);
     // Three degree-of-freedom (n=3)
@@ -86,6 +93,7 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
             continue;
         }
         // Convert the landmark to the g2o vertex, then set it to the optimizer
+        // lm_vtxはランドマークIDとランドマークの位置, 一定に保つかのフラグ(全てfalse)を持つ
         auto lm_vtx = lm_vtx_container.create_vertex(lm, false);
         optimizer.addVertex(lm_vtx);
 
@@ -101,17 +109,21 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
                 continue;
             }
 
+            // ランドマークを参照するキーフレームがノードとして存在していなければスキップ
             if (!keyfrm_vtx_container.contain(keyfrm)) {
                 continue;
             }
 
+            // キーフレームのノードを取得
             const auto keyfrm_vtx = keyfrm_vtx_container.get_vertex(keyfrm);
             const auto& undist_keypt = keyfrm->frm_obs_.undist_keypts_.at(idx);
             const float x_right = keyfrm->frm_obs_.stereo_x_right_.empty() ? -1.0f : keyfrm->frm_obs_.stereo_x_right_.at(idx);
+            // 1/(scale_factor_at_level**2)
             const float inv_sigma_sq = keyfrm->orb_params_->inv_level_sigma_sq_.at(undist_keypt.octave);
             const auto sqrt_chi_sq = (keyfrm->camera_->setup_type_ == camera::setup_type_t::Monocular)
                                          ? sqrt_chi_sq_2D
                                          : sqrt_chi_sq_3D;
+            // 拘束条件等を設定
             auto reproj_edge_wrap = reproj_edge_wrapper(keyfrm, keyfrm_vtx, lm, lm_vtx,
                                                         idx, undist_keypt.pt.x, undist_keypt.pt.y, x_right,
                                                         inv_sigma_sq, sqrt_chi_sq, use_huber_kernel);
@@ -239,6 +251,7 @@ bool global_bundle_adjuster::optimize(const std::vector<std::shared_ptr<data::ke
                                       eigen_alloc_unord_map<unsigned int, Mat44_t>& keyfrm_to_pose_cw_after_global_BA,
                                       bool* const force_stop_flag) const {
     std::unordered_set<unsigned int> already_found_landmark_ids;
+    // keyfrms で観測した全てのランドマークを取得
     std::vector<std::shared_ptr<data::landmark>> lms;
     for (const auto& keyfrm : keyfrms) {
         for (const auto& lm : keyfrm->get_landmarks()) {
@@ -285,9 +298,11 @@ bool global_bundle_adjuster::optimize(const std::vector<std::shared_ptr<data::ke
 
     g2o::SparseOptimizer optimizer;
     auto terminateAction = new terminate_action;
+    // 閾値を1e-3に設定
     terminateAction->setGainThreshold(1e-3);
     optimizer.addPostIterationAction(terminateAction);
 
+    // num_iter_ はデフォルトで10
     optimize_impl(optimizer, keyfrms, lms, markers, is_optimized_lm, keyfrm_vtx_container, lm_vtx_container, marker_vtx_container,
                   num_iter_, use_huber_kernel_, force_stop_flag);
 

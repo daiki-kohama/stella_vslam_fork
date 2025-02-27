@@ -105,6 +105,7 @@ void mapping_module::run() {
         }
 
         // if the queue is empty, the following process is not needed
+        // キーフレームのキューがなければ、アイドル状態にしてcontinue
         if (!keyframe_is_queued()) {
             set_is_idle(true);
             continue;
@@ -185,15 +186,19 @@ void mapping_module::mapping_with_new_keyframe() {
 
     // triangulate new landmarks between the current frame and each of the covisibilities
     std::atomic<bool> abort_create_new_landmarks{false};
+    // enable_interruption_of_landmark_generation_ はデフォルトでtrue
     if (!enable_interruption_of_landmark_generation_) {
+        // 並列処理を行わない場合
         create_new_landmarks(abort_create_new_landmarks);
     }
     else {
+        // 並列処理を行う場合
         auto future_create_new_landmark = std::async(std::launch::async,
                                                      [this, &abort_create_new_landmarks]() {
                                                          create_new_landmarks(abort_create_new_landmarks);
                                                      });
         while (future_create_new_landmark.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout) {
+            // キーフレームがエンキューされていたら中断
             if (keyframe_is_queued()) {
                 abort_create_new_landmarks = true;
             }
@@ -223,6 +228,7 @@ void mapping_module::mapping_with_new_keyframe() {
         }
     }
 
+    // erase_temporal_keyframes_ はデフォルトでfalse
     if (erase_temporal_keyframes_) {
         for (const auto& keyfrm : map_db_->get_all_keyframes()) {
             if (keyfrm->id_ <= map_db_->get_fixed_keyframe_id_threshold()) {
@@ -252,6 +258,7 @@ void mapping_module::mapping_with_new_keyframe() {
         }
     }
 
+    // 冗長なキーフレームの削除
     local_map_cleaner_->remove_redundant_keyframes(cur_keyfrm_);
 }
 
@@ -311,8 +318,10 @@ void mapping_module::create_new_landmarks(std::atomic<bool>& abort_create_new_la
 
         // if the scene scale is much smaller than the baseline, abort the triangulation
         if (use_baseline_dist_thr_ratio_) {
+            // ngh_keyfrmからみたランドマークのz座標の中央値
             const float median_depth_in_ngh = ngh_keyfrm->compute_median_depth(true);
             if (baseline_dist < baseline_dist_thr_ratio_ * median_depth_in_ngh) {
+                // 2フレーム間の距離がランドマークまでの距離よりもかなり小さい場合、スキップ
                 continue;
             }
         }
@@ -331,6 +340,7 @@ void mapping_module::create_new_landmarks(std::atomic<bool>& abort_create_new_la
                                                                           cur_keyfrm_->get_rot_cw(), cur_keyfrm_->get_trans_cw());
 
         // vector of matches (idx in the current, idx in the neighbor)
+        // cur_keyfrm_とngh_keyfrmで対応する特徴点のインデックスを取得
         std::vector<std::pair<unsigned int, unsigned int>> matches;
         robust_matcher.match_for_triangulation(cur_keyfrm_, ngh_keyfrm, E_ngh_to_cur, matches);
 
@@ -422,6 +432,7 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
         // - additional matches
         // - duplication of matches
         // then, add matches and solve duplication
+        // 現在のキーフレームのランドマークとfuse_tgt_keyfrmの特徴点の重複を確認
         auto cur_landmarks = cur_keyfrm_->get_landmarks();
         for (const auto& fuse_tgt_keyfrm : fuse_tgt_keyfrms) {
             std::unordered_map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>> duplicated_lms_in_keyfrm;
@@ -432,6 +443,7 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
 
             // There is association between the 3D point and the keyframe
             // -> Duplication exists
+            // ランドマーク間で重複がある場合の処理
             for (const auto& lms_pair : duplicated_lms_in_keyfrm) {
                 auto lm_to_replace = lms_pair.first;
                 auto lm_in_keyfrm = lms_pair.second;
@@ -442,13 +454,17 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
                     std::swap(lm_to_replace, lm_in_keyfrm);
                 }
                 // Replace lm_in_keyfrm with lm_to_replace
+                // lm_in_keyfrm を lm_to_replace で置き換える
                 if (lm_to_replace->id_ != lm_in_keyfrm->id_) {
                     replaced_lms[lm_in_keyfrm] = lm_to_replace;
+                    // lm_in_keyfrm を lm_to_replace に置き換える
                     lm_in_keyfrm->replace(lm_to_replace, map_db_);
                     if (!lm_to_replace->has_representative_descriptor()) {
+                        // 代表記述子がない場合は計算
                         lm_to_replace->compute_descriptor();
                     }
                     if (!lm_to_replace->has_valid_prediction_parameters()) {
+                        // 有効距離などが無効な場合は更新
                         lm_to_replace->update_mean_normal_and_obs_scale_variance();
                     }
                 }
@@ -457,9 +473,11 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
             for (const auto& best_idx_lm : new_connections) {
                 const auto& best_idx = best_idx_lm.first;
                 auto lm = best_idx_lm.second;
+                // lm が置き換えられている場合は置き換えられた最新のランドマークを取得
                 while (replaced_lms.count(lm)) {
                     lm = replaced_lms[lm];
                 }
+                // lm にキーフレームを接続
                 lm->connect_to_keyframe(fuse_tgt_keyfrm, best_idx);
                 lm->update_mean_normal_and_obs_scale_variance();
                 lm->compute_descriptor();
@@ -472,6 +490,7 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
         // - additional matches
         // - duplication of matches
         // then, add matches and solve duplication
+        // 現在のキーフレームの特徴点とfuse_tgt_keyfrmsのランドマークの重複を確認
         nondeterministic::unordered_set<std::shared_ptr<data::landmark>> candidate_landmarks_to_fuse;
 
         for (const auto& fuse_tgt_keyfrm : fuse_tgt_keyfrms) {
@@ -488,6 +507,7 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
                 if (static_cast<bool>(candidate_landmarks_to_fuse.count(lm))) {
                     continue;
                 }
+                // fuse_tgt_keyfrmsの全ての有効なランドマークをcandidate_landmarks_to_fuseに追加
                 candidate_landmarks_to_fuse.insert(lm);
             }
         }

@@ -22,9 +22,11 @@ unsigned int bow_tree::match_frame_and_keyframe(const std::shared_ptr<data::keyf
 
     while (keyfrm_itr != kryfrm_end && frm_itr != frm_end) {
         // Check if the node numbers of BoW tree match
+        // BoWツリーのノード番号が一致するか確認
         if (keyfrm_itr->first == frm_itr->first) {
             // If the node numbers of BoW tree match,
             // Check in practice if matches exist between the frame and keyframe
+            // キーフレームの特徴点のインデックスとフレームの特徴点のインデックスの対応を確認
             const auto& keyfrm_indices = keyfrm_itr->second;
             const auto& frm_indices = frm_itr->second;
 
@@ -49,6 +51,7 @@ unsigned int bow_tree::match_frame_and_keyframe(const std::shared_ptr<data::keyf
                         continue;
                     }
 
+                    // frame_tracker.cc の bow_match_based_track からの呼び出しでは、check_orientation_ は true が指定されている
                     if (check_orientation_ && std::abs(util::angle::diff(keyfrm->frm_obs_.undist_keypts_.at(keyfrm_idx).angle, frm.frm_obs_.undist_keypts_.at(frm_idx).angle)) > 30.0) {
                         continue;
                     }
@@ -67,11 +70,14 @@ unsigned int bow_tree::match_frame_and_keyframe(const std::shared_ptr<data::keyf
                     }
                 }
 
+                // ハミング距離が、HAMMING_DIST_THR_LOW(=50) より大きい場合はスキップ
                 if (HAMMING_DIST_THR_LOW < best_hamm_dist) {
                     continue;
                 }
 
                 // Ratio test
+                // frame_tracker.cc の bow_match_based_track からの呼び出しでは、lowe_ratio_=0.7 が指定されている
+                // 2番目にハミング距離が小さいものが、最小のハミング距離の 0.7 倍より小さい場合はスキップ
                 if (lowe_ratio_ * second_best_hamm_dist < static_cast<float>(best_hamm_dist)) {
                     continue;
                 }
@@ -107,8 +113,10 @@ unsigned int bow_tree::match_keyframes(const std::shared_ptr<data::keyframe>& ke
 
     // Set 'true' if a keypoint in keyframe 2 is associated to the keypoint in keyframe 1
     // NOTE: the size matches the number of the keypoints in keyframe 2
+    // keyfrm_2 のランドマークでマッチ済みのものを記録
     std::vector<bool> is_already_matched_in_keyfrm_2(keyfrm_2_lms.size(), false);
 
+    // bow_feat_vec_ は、BoWのノード番号とそのノード番号に対応する特徴点のインデックスを保持
     data::bow_feature_vector::const_iterator itr_1 = keyfrm_1->bow_feat_vec_.begin();
     data::bow_feature_vector::const_iterator itr_2 = keyfrm_2->bow_feat_vec_.begin();
     const data::bow_feature_vector::const_iterator itr_1_end = keyfrm_1->bow_feat_vec_.end();
@@ -150,16 +158,19 @@ unsigned int bow_tree::match_keyframes(const std::shared_ptr<data::keyframe>& ke
                         continue;
                     }
 
+                    // 既に keyframe 2 のランドマークが keyframe 1 の特徴点にマッチしている場合はスキップ
                     if (is_already_matched_in_keyfrm_2.at(idx_2)) {
                         continue;
                     }
 
+                    // loop_detecter.cc, select_loop_candidate_via_Sim3 から呼ばれる場合は、check_orientation_=false
                     if (check_orientation_ && std::abs(util::angle::diff(keyfrm_1->frm_obs_.undist_keypts_.at(idx_1).angle, keyfrm_2->frm_obs_.undist_keypts_.at(idx_2).angle)) > 30.0) {
                         continue;
                     }
 
                     const auto& desc_2 = keyfrm_2->frm_obs_.descriptors_.row(idx_2);
 
+                    // ORB特徴量のハミング距離を計算
                     const auto hamm_dist = compute_descriptor_distance_32(desc_1, desc_2);
 
                     if (hamm_dist < best_hamm_dist) {
@@ -172,17 +183,21 @@ unsigned int bow_tree::match_keyframes(const std::shared_ptr<data::keyframe>& ke
                     }
                 }
 
+                // 最小ハミング距離が閾値以下でない場合はスキップ
                 if (HAMMING_DIST_THR_LOW < best_hamm_dist) {
                     continue;
                 }
 
                 // Ratio test
+                // loop_detecter.cc, select_loop_candidate_via_Sim3 から呼ばれる場合は、lowe_ratio_=0.75
+                // 2番目に近い特徴量とのハミング距離が最小ハミング距離の 0.75 倍より大きい場合はスキップ
                 if (lowe_ratio_ * second_best_hamm_dist < static_cast<float>(best_hamm_dist)) {
                     continue;
                 }
 
                 // Record the matching information
                 // The index of keyframe 1 matches the best index 2 of keyframe 2
+                // キーフレーム 1 のインデックスがキーフレーム 2 のベストインデックス 2 にマッチ
                 matched_lms_in_keyfrm_1.at(idx_1) = keyfrm_2_lms.at(best_idx_2);
                 // The best index of keyframe 2 already matches the keypoint of keyframe 1
                 is_already_matched_in_keyfrm_2.at(best_idx_2) = true;

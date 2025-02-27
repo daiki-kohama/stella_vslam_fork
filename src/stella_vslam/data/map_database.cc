@@ -231,6 +231,7 @@ unsigned int map_database::get_num_landmarks() const {
 }
 
 unsigned int map_database::get_min_num_shared_lms() const {
+    // デフォルトは15
     return min_num_shared_lms_;
 }
 

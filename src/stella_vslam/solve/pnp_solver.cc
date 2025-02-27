@@ -27,7 +27,9 @@ pnp_solver::pnp_solver(const eigen_alloc_vector<Vec3_t>& valid_bearings,
     constexpr double max_rad_error = 1.0 * M_PI / 180.0;
     for (unsigned int i = 0; i < num_matches_; ++i) {
         // Calculate radial error threshold from each scale factor
+        // 各スケール毎に誤差の閾値を計算
         const auto max_rad_error_with_scale = scale_factors.at(octaves.at(i)) * max_rad_error;
+        // util::cos は、高速にcosの近似値を計算する関数
         max_cos_errors_.at(i) = util::cos(max_rad_error_with_scale);
     }
 
@@ -46,6 +48,7 @@ void pnp_solver::find_via_ransac(const unsigned int max_num_iter, const bool rec
 
     // minimum number of samples (= 4)
     static constexpr unsigned int min_set_size = 4;
+    // マッチしているランドマークが4未満 or min_num_inliers_ (loop_detector.ccからの呼び出しでは10)以下なら、解は無効とする
     if (num_matches_ < min_set_size || num_matches_ < min_num_inliers_) {
         solution_is_valid_ = false;
         return;
@@ -62,12 +65,15 @@ void pnp_solver::find_via_ransac(const unsigned int max_num_iter, const bool rec
     // inlier/outlier flags
     std::vector<bool> is_inlier_match_in_sac;
 
+    // カメラポーズ推定するキーフレームからランドマークへの方向ベクトル
     eigen_alloc_vector<Vec3_t> min_set_bearings;
+    // カメラポーズ推定に用いるランドマークの3Dワールド座標
     eigen_alloc_vector<Vec3_t> min_set_pos_ws;
 
     // 2. RANSAC loop
 
     double min_cost = std::numeric_limits<double>::max();
+    // loop_detector.ccからの呼び出しでは、max_num_iter = 30
     for (unsigned int iter = 0; iter < max_num_iter; ++iter) {
         // 2-1. Create a minimum set
         const auto random_indices = util::create_random_array(min_set_size, 0U, num_matches_ - 1, random_engine_);
@@ -92,6 +98,7 @@ void pnp_solver::find_via_ransac(const unsigned int max_num_iter, const bool rec
         const auto num_inliers = check_inliers(rot_cw_in_sac, trans_cw_in_sac, is_inlier_match_in_sac, cost);
 
         // 2-4. Update the best model
+        // min_num_inliers_ より多くのinlierを持ち、かつ、最小コストを持つモデルを採用
         if (num_inliers > min_num_inliers_ && min_cost > cost) {
             min_cost = cost;
             best_rot_cw_ = rot_cw_in_sac;
@@ -102,6 +109,7 @@ void pnp_solver::find_via_ransac(const unsigned int max_num_iter, const bool rec
 
     solution_is_valid_ = min_cost < std::numeric_limits<double>::max();
 
+    // loop_detector.ccからの呼び出しでは、recompute = false
     if (!recompute || !solution_is_valid_) {
         return;
     }
@@ -135,9 +143,11 @@ unsigned int pnp_solver::check_inliers(const Mat33_t& rot_cw, const Vec3_t& tran
         const Vec3_t pos_c = rot_cw * pos_w + trans_cw;
 
         // Compute cosine similarity between the bearing vector and the position of the 3D point
+        // pos_c と bearing のなす角のcos
         const auto cos_angle = pos_c.dot(bearing) / pos_c.norm();
 
         // The match is inlier if the cosine similarity is less than or equal to the threshold
+        // コンストラクタで画像スケールを元に計算した max_cos_errors_ と比較
         if (max_cos_errors_.at(i) < cos_angle) {
             is_inlier.at(i) = true;
             cost += 1 - cos_angle;
@@ -152,13 +162,16 @@ unsigned int pnp_solver::check_inliers(const Mat33_t& rot_cw, const Vec3_t& tran
     return num_inliers;
 }
 
+// EPnPアルゴリズムで外部パラメータを推定(ちゃんと理解してない)
 double pnp_solver::compute_pose(const eigen_alloc_vector<Vec3_t>& bearing_vectors,
                                 const eigen_alloc_vector<Vec3_t>& pos_ws,
                                 Mat33_t& rot_cw, Vec3_t& trans_cw, const unsigned int num_iter) {
     // EPnP: An AccurateO(n)Solution to the PnP Problem
     // (Lepetit et al. in IJCV 2009)
 
+    // 制御点を計算
     const eigen_alloc_vector<Vec3_t> control_points = choose_control_points(pos_ws);
+    // 制御点を用いて各 pos_ws を表すパラメータ(α)を計算
     const eigen_alloc_vector<Vec4_t> alphas = compute_barycentric_coordinates(control_points, pos_ws);
 
     // Construct M matrix according to Eq.(5) and (6)
@@ -205,6 +218,7 @@ double pnp_solver::compute_pose(const eigen_alloc_vector<Vec3_t>& bearing_vector
     return reproj_minimum;
 }
 
+// PnP問題における制御点えお計算する関数
 eigen_alloc_vector<Vec3_t> pnp_solver::choose_control_points(const eigen_alloc_vector<Vec3_t>& pos_ws) {
     const unsigned int num_correspondences = pos_ws.size();
     eigen_alloc_vector<Vec3_t> cws;
@@ -216,16 +230,20 @@ eigen_alloc_vector<Vec3_t> pnp_solver::choose_control_points(const eigen_alloc_v
     for (unsigned int i = 0; i < num_correspondences; ++i) {
         cws.at(0) += pos_ws.at(i);
     }
+    // pos_ws の平均点を計算
     cws.at(0) /= num_correspondences;
 
     // Take C1, C2, and C3 from PCA on the reference points:
+    // 動的にサイズが決定可能な行列を作成
     MatX_t PW0(num_correspondences, 3);
 
     for (unsigned int i = 0; i < num_correspondences; ++i) {
         PW0.block<1, 3>(i, 0) = pos_ws.at(i) - cws.at(0);
     }
 
+    // 共分散行列を計算
     const MatX_t PW0tPW0 = PW0.transpose() * PW0;
+    // 特異値分解
     Eigen::JacobiSVD<MatX_t> SVD(PW0tPW0, Eigen::ComputeFullV | Eigen::ComputeFullU);
     const MatX_t D = SVD.singularValues();
     const MatX_t U = SVD.matrixU();
@@ -237,6 +255,7 @@ eigen_alloc_vector<Vec3_t> pnp_solver::choose_control_points(const eigen_alloc_v
     return cws;
 }
 
+// control_points を用いて各 pos_ws を表すパラメータ(α)を計算する関数
 eigen_alloc_vector<Vec4_t> pnp_solver::compute_barycentric_coordinates(const eigen_alloc_vector<Vec3_t>& control_points, const eigen_alloc_vector<Vec3_t>& pos_ws) {
     const unsigned int num_correspondences = pos_ws.size();
     // The barycentric coordinates are obtained easily

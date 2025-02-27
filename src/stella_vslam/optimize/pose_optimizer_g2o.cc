@@ -84,6 +84,7 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
 
     for (unsigned int idx = 0; idx < num_keypts; ++idx) {
         const auto& lm = landmarks.at(idx);
+        // この時点でマッチしているランドマークのみ使用
         if (!lm) {
             continue;
         }
@@ -100,6 +101,8 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
         const auto sqrt_chi_sq = (camera->setup_type_ == camera::setup_type_t::Monocular)
                                      ? sqrt_chi_sq_2D
                                      : sqrt_chi_sq_3D;
+        // フレームの頂点とランドマーク(頂点ではない)を接続するエッジを作成
+        // 最適化時は、カメラの回転と並進の6次元の変数でヤコビアンが計算される
         auto pose_opt_edge_wrap = pose_opt_edge_wrapper(camera, frm_vtx, lm->get_pos_in_world(),
                                                         idx, undist_keypt.pt.x, undist_keypt.pt.y, x_right,
                                                         inv_sigma_sq, sqrt_chi_sq);
@@ -114,6 +117,7 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
     // 4. Perform robust Bundle Adjustment (BA)
 
     unsigned int num_bad_obs = 0;
+    // デフォルトで、 num_trials_ = 4, num_each_iter_ = 10
     for (unsigned int trial = 0; trial < num_trials_; ++trial) {
         optimizer.initializeOptimization();
         optimizer.optimize(num_each_iter_);
@@ -123,17 +127,20 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
         for (auto& pose_opt_edge_wrap : pose_opt_edge_wraps) {
             auto edge = pose_opt_edge_wrap.edge_;
 
+            // アウトライアとされたエッジの誤差は最適化の中で計算されていないので、ここで計算
             if (outlier_flags.at(pose_opt_edge_wrap.idx_)) {
                 edge->computeError();
             }
 
             if (pose_opt_edge_wrap.is_monocular_) {
                 if (chi_sq_2D < edge->chi2()) {
+                    // カイ二乗値よりも大きければ外れ値として扱う
                     outlier_flags.at(pose_opt_edge_wrap.idx_) = true;
                     pose_opt_edge_wrap.set_as_outlier();
                     ++num_bad_obs;
                 }
                 else {
+                    // カイ二乗値よりも小さければ inlier として扱う
                     outlier_flags.at(pose_opt_edge_wrap.idx_) = false;
                     pose_opt_edge_wrap.set_as_inlier();
                 }
@@ -150,11 +157,13 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
                 }
             }
 
+            // 最後の最適化で、誤差を抑制するカーネルを削除
             if (trial == num_trials_ - 2) {
                 edge->setRobustKernel(nullptr);
             }
         }
 
+        // 誤差の小さいエッジが5個未満になったら終了
         if (num_init_obs - num_bad_obs < 5) {
             break;
         }

@@ -5,6 +5,7 @@
 #include <opencv2/core/types.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/features2d.hpp>
+#include <opencv2/opencv.hpp>
 
 #include <iostream>
 
@@ -127,6 +128,7 @@ void orb_extractor::compute_image_pyramid(const cv::Mat& image) {
 
 void orb_extractor::compute_fast_keypoints(std::vector<std::vector<cv::KeyPoint>>& all_keypts, const cv::Mat& mask) const {
     all_keypts.resize(orb_params_->num_levels_);
+    cv::imwrite("mask.png", mask);
 
     // An anonymous function which checks mask(image or rectangle)
     auto is_in_mask = [&mask](const unsigned int y, const unsigned int x, const float scale_factor) {
@@ -237,7 +239,9 @@ void orb_extractor::compute_fast_keypoints(std::vector<std::vector<cv::KeyPoint>
             keypt.pt.x += min_border_x;
             keypt.pt.y += min_border_y;
             // Set the other information
+            // キーポイントが抽出されたオクターブ（ピラミッド層）
             keypt.octave = level;
+            // 意味のあるキーポイント近傍の直径
             keypt.size = scaled_patch_size;
         }
     }
@@ -266,6 +270,7 @@ std::vector<cv::KeyPoint> orb_extractor::distribute_keypoints_via_tree(const std
 
         // Fork node and remove the old one from nodes
         while (iter != nodes.end()) {
+            // ノードの持つ特徴点数が1 or ノードの面積がmin_size以下の場合
             if (iter->keypts_.size() == 1 || iter->size() * scale_factor * scale_factor <= min_size_) {
                 iter++;
                 continue;
@@ -284,6 +289,7 @@ std::vector<cv::KeyPoint> orb_extractor::distribute_keypoints_via_tree(const std
         }
     }
 
+    // 各nodeの中で最もキーポイントの強度が高いもののベクトル配列を返す
     return find_keypoints_with_max_response(nodes);
 }
 
@@ -307,6 +313,8 @@ std::list<orb_extractor_node> orb_extractor::initialize_nodes(const std::vector<
         // If the aspect ratio is equal to or less than 1, the patches are made in a vertical direction
         num_x_grid = 1;
         num_y_grid = std::round(1 / ratio);
+        // 多分以下はおかしいが、全方位画像では関係ない。正しくは以下のコメントアウト部分
+        // delta_x = max_x - min_x;
         delta_x = max_x - min_y;
         delta_y = static_cast<double>(max_y - min_y) / num_y_grid;
     }
@@ -385,6 +393,7 @@ std::vector<cv::KeyPoint> orb_extractor::find_keypoints_with_max_response(std::l
     for (auto& node : nodes) {
         auto& node_keypts = node.keypts_;
         auto& keypt = node_keypts.at(0);
+        // responseはキーポイントに対する検出器の応答（キーポイントの強度）
         double max_response = keypt.response;
 
         for (unsigned int k = 1; k < node_keypts.size(); ++k) {
@@ -402,6 +411,7 @@ std::vector<cv::KeyPoint> orb_extractor::find_keypoints_with_max_response(std::l
 
 void orb_extractor::compute_orientation(const cv::Mat& image, std::vector<cv::KeyPoint>& keypts) const {
     for (auto& keypt : keypts) {
+        // 計算されたキーポイントの向き（該当しない場合は -1）．これは [0,360] 度単位で，画像座標系に対して相対的に，つまり時計回りに計測されます．
         keypt.angle = ic_angle(image, keypt.pt);
     }
 }

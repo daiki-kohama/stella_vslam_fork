@@ -66,25 +66,32 @@ bool frame::can_observe(const std::shared_ptr<landmark>& lm, const float ray_cos
                         Vec2_t& reproj, float& x_right, unsigned int& pred_scale_level) const {
     const Vec3_t pos_w = lm->get_pos_in_world();
 
+    // 再投影した座標を reproj に格納
+    // equirectangular の場合は常に true　を返す
     const bool in_image = camera_->reproject_to_image(rot_cw_, trans_cw_, pos_w, reproj, x_right);
     if (!in_image) {
         return false;
     }
 
+    // カメラ中心から見たランドマークまでのベクトル
     const Vec3_t cam_to_lm_vec = pos_w - trans_wc_;
     const auto cam_to_lm_dist = cam_to_lm_vec.norm();
     const auto margin_far = 1.3;
     const auto margin_near = 1.0 / margin_far;
+    // ランドマークごとに計算されたORBのスケール範囲外の場合は無視
     if (!lm->is_inside_in_orb_scale(cam_to_lm_dist, margin_far, margin_near)) {
         return false;
     }
 
+    // カメラ位置からランドマークまでの平均的なベクトルを取得
     const Vec3_t obs_mean_normal = lm->get_obs_mean_normal();
     const auto ray_cos = cam_to_lm_vec.dot(obs_mean_normal) / cam_to_lm_dist;
+    // tracking_module.cc の search_local_landmarks からの呼び出しでは ray_cos_thr = 0.5 なので、60度より角度差が大きい場合は無視
     if (ray_cos < ray_cos_thr) {
         return false;
     }
 
+    // カメラ位置からランドマークまでの距離に応じたORBのスケールレベルを取得
     pred_scale_level = lm->predict_scale_level(cam_to_lm_dist, this->orb_params_->num_levels_, this->orb_params_->log_scale_factor_);
     return true;
 }

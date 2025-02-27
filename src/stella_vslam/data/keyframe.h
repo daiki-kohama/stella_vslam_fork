@@ -281,7 +281,9 @@ public:
     std::unordered_map<unsigned int, marker2d> markers_2d_;
 
     //! BoW features (DBoW2 or FBoW)
+    // 画像全体のBoW表現 first: (葉)ノードID, second: ノードの重み
     bow_vector bow_vec_;
+    // 特徴量のBoW表現 first: ノードID, second: ノードに分類された特徴量のインデックスのリスト
     bow_feature_vector bow_feat_vec_;
 
     //-----------------------------------------

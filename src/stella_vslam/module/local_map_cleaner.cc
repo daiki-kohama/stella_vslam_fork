@@ -34,13 +34,19 @@ unsigned int local_map_cleaner::remove_invalid_landmarks(const unsigned int cur_
         if (lm->will_be_erased()) {
             // in case `lm` will be erased
             // remove `lm` from the buffer
+            // Valid で正しい?Invalidじゃない?
+            // → いずれ消されるから Valid でいい
             lm_state = lm_state_t::Valid;
         }
+        // equirectangular の場合の observed_ratio の定義が気になる
+        // observed_ratio_thr_ のデフォルトは 0.3
         else if (lm->get_observed_ratio() < observed_ratio_thr_) {
             // if `lm` is not reliable
             // remove `lm` from the buffer and the database
             lm_state = lm_state_t::Invalid;
         }
+        // ランドマークが初めて観測されたキーフレームのID+num_reliable_keyfrms_が現在のキーフレームIDより小さい場合
+        // num_reliable_keyfrms_ のデフォルトは 2
         else if (num_reliable_keyfrms_ + lm->first_keyfrm_id_ < cur_keyfrm_id) {
             // if the number of the observers of `lm` is sufficient after some keyframes were inserted
             // remove `lm` from the buffer
@@ -77,6 +83,7 @@ unsigned int local_map_cleaner::remove_redundant_keyframes(const std::shared_ptr
     // the corresponding keyframe will be erased
     unsigned int num_removed = 0;
     // check redundancy for each of the covisibilities
+    // デフォルトでは30個の共視キーフレームを調べる
     const auto cur_covisibilities = cur_keyfrm->graph_node_->get_top_n_covisibilities(top_n_covisibilities_to_search_);
     for (const auto& covisibility : cur_covisibilities) {
         // cannot remove the root node
@@ -84,6 +91,7 @@ unsigned int local_map_cleaner::remove_redundant_keyframes(const std::shared_ptr
             continue;
         }
         // cannot remove the recent keyframe(s)
+        // window_size_not_to_remove(=2)　個前までのキーフレームは消さない
         if (covisibility->id_ <= cur_keyfrm->id_
             && cur_keyfrm->id_ <= covisibility->id_ + window_size_not_to_remove) {
             continue;
@@ -91,11 +99,14 @@ unsigned int local_map_cleaner::remove_redundant_keyframes(const std::shared_ptr
 
         // count the number of redundant observations (num_redundant_obs) and valid observations (num_valid_obs)
         // for the covisibility
+        // 有効なランドマークのうち、冗長な観測回数(他のキーフレームの方が信頼度高く観測している回数)
         unsigned int num_redundant_obs = 0;
+        // 有効なランドマークの観測回数
         unsigned int num_valid_obs = 0;
         count_redundant_observations(covisibility, num_valid_obs, num_redundant_obs);
 
         // if the redundant observation ratio of `covisibility` is larger than the threshold, it will be removed
+        // デフォルトでは9割以上の観測が冗長な場合、キーフレームを削除
         if (redundant_obs_ratio_thr_ <= static_cast<float>(num_redundant_obs) / num_valid_obs) {
             ++num_removed;
             const auto cur_landmarks = covisibility->get_landmarks();
@@ -139,6 +150,7 @@ void local_map_cleaner::count_redundant_observations(const std::shared_ptr<data:
         }
 
         // if depth is within the valid range, it won't be considered
+        // 単眼じゃない場合
         if (keyfrm->depth_is_available()) {
             assert(!keyfrm->frm_obs_.depths_.empty());
             const auto depth = keyfrm->frm_obs_.depths_.at(idx);
@@ -150,6 +162,7 @@ void local_map_cleaner::count_redundant_observations(const std::shared_ptr<data:
         ++num_valid_obs;
 
         // if the number of the obs is smaller than the threshold, cannot remote the observers
+        // ランドマークを観測しているキーフレームの数が3以下の場合
         if (lm->num_observations() <= num_better_obs_thr) {
             continue;
         }
@@ -174,9 +187,12 @@ void local_map_cleaner::count_redundant_observations(const std::shared_ptr<data:
             const auto ngh_scale_level = ngh_keyfrm->frm_obs_.undist_keypts_.at(obs.second).octave;
 
             // compare the scale levels
+            // keyfrm のスケールレベル＋1 以下のスケールレベルのキーフレームが観測していれば、ngh_keyfrm の観測は信頼できる
+            // なぜ、＋1 以下なのかがわからない
             if (ngh_scale_level <= scale_level + 1) {
                 // the observation by `ngh_keyfrm` is more reliable than `keyfrm`
                 ++num_better_obs;
+                // 3個以上のキーフレームがより信頼度高く観測している場合、keyfrm の観測は冗長
                 if (num_better_obs_thr <= num_better_obs) {
                     // if the number of the better observations is greater than the threshold,
                     // consider the observation of `lm` by `keyfrm` is redundant

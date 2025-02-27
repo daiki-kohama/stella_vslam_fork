@@ -208,6 +208,7 @@ void landmark::compute_descriptor() {
     SPDLOG_TRACE("landmark::compute_descriptor {}", id_);
 
     // Append features of corresponding points
+    // 1つのランドマークに対して対応する複数の特徴点の特徴量を取得
     std::vector<cv::Mat> descriptors;
     descriptors.reserve(observations.size());
     for (const auto& observation : observations) {
@@ -221,6 +222,7 @@ void landmark::compute_descriptor() {
 
     // Get median of Hamming distance
     // Calculate all the Hamming distances between every pair of the features
+    // それぞれの特徴量間のハミング距離を計算
     const auto num_descs = descriptors.size();
     std::vector<std::vector<unsigned int>> hamm_dists(num_descs, std::vector<unsigned int>(num_descs));
     for (unsigned int i = 0; i < num_descs; ++i) {
@@ -236,10 +238,14 @@ void landmark::compute_descriptor() {
     unsigned int best_median_dist = match::MAX_HAMMING_DIST;
     unsigned int best_idx = 0;
     for (unsigned idx = 0; idx < num_descs; ++idx) {
+        // 1つの特徴点に対するハミング距離を取得
         std::vector<unsigned int> partial_hamm_dists(hamm_dists.at(idx).begin(), hamm_dists.at(idx).begin() + num_descs);
+        // ハミング距離を昇順にソート
         std::sort(partial_hamm_dists.begin(), partial_hamm_dists.end());
+        // 中央値(偶数の場合は小さい方)を取得
         const auto median_dist = partial_hamm_dists.at(static_cast<unsigned int>(0.5 * (num_descs - 1)));
 
+        // 中央値の中で最も小さいものを選択
         if (median_dist < best_median_dist) {
             best_median_dist = median_dist;
             best_idx = idx;
@@ -300,9 +306,13 @@ void landmark::update_mean_normal_and_obs_scale_variance() {
         pos_w = pos_w_;
     }
 
+    // カメラ位置からランドマークへのベクトルの平均(長さ1で正規化済み)を計算
     Vec3_t mean_normal;
     compute_mean_normal(observations, pos_w, mean_normal);
 
+    // ランドマークとカメラ間の最大・最小有効距離を計算？
+    // 最大有効距離: ランドマークと参照キーフレームの距離 * キーフレームのスケールファクタ(デフォルトで1.2)
+    // 最小有効距離: 最大有効距離 * キーフレームの最大スケールの逆数(デフォルトで(1.0/1.2)^(8-1))
     float max_valid_dist;
     float min_valid_dist;
     compute_orb_scale_variance(observations, ref_keyfrm, pos_w, max_valid_dist, min_valid_dist);
@@ -334,6 +344,7 @@ float landmark::get_max_valid_distance() const {
 }
 
 unsigned int landmark::predict_scale_level(const float cam_to_lm_dist, float num_scale_levels, float log_scale_factor) const {
+    // スケールレベルを推測しているが、どうしてこの式になるのかは不明
     float ratio;
     {
         std::lock_guard<std::mutex> lock(mtx_position_);
@@ -363,9 +374,11 @@ void landmark::prepare_for_erasing(map_database* map_db) {
     }
 
     for (const auto& keyfrm_and_idx : observations) {
+        // キーフレームからランドマークを削除
         keyfrm_and_idx.first.lock()->erase_landmark_with_index(keyfrm_and_idx.second);
     }
 
+    // マップデータベースからランドマークを削除
     map_db->erase_landmark(id_);
 }
 
@@ -392,6 +405,7 @@ void landmark::replace(std::shared_ptr<landmark> lm, data::map_database* map_db)
         observations = observations_;
     }
 
+    // will_be_erased_ = true にして、キーフレームとマップデータベースからランドマークを削除
     prepare_for_erasing(map_db);
 
     // 2. Merge lm with this
@@ -405,11 +419,14 @@ void landmark::replace(std::shared_ptr<landmark> lm, data::map_database* map_db)
     for (const auto& keyfrm_and_idx : observations) {
         const auto& keyfrm = keyfrm_and_idx.first.lock();
         if (!lm->is_observed_in_keyframe(keyfrm)) {
+            // 置き換え前のランドマークで観測されているキーフレームに対して、置き換え後のランドマークを接続
             lm->connect_to_keyframe(keyfrm, keyfrm_and_idx.second);
         }
     }
 
+    // 置き換え前のランドマークの観測数を加算
     lm->increase_num_observed(num_observed);
+    // 置き換え前のランドマークの観測可能数を加算
     lm->increase_num_observable(num_observable);
 }
 

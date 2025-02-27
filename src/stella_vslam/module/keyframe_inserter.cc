@@ -46,44 +46,63 @@ bool keyframe_inserter::new_keyframe_is_needed(data::map_database* map_db,
                                                const unsigned int min_num_obs_thr) const {
     assert(mapper_);
     // Any keyframes are not able to be added when the mapping module stops
+    // マッピングモジュールが停止している場合は新しいキーフレームを追加できない
     if (mapper_->is_paused() || mapper_->pause_is_requested()) {
         return false;
     }
 
+    // 最後に挿入されたキーフレームを取得
     auto last_inserted_keyfrm = map_db->get_last_inserted_keyframe();
 
     // Count the number of the 3D points that are observed from more than two keyframes
+    // 参照キーフレームが観測したランドマークのうち、 min_num_obs_thr 以上のキーフレームから観測された3D点の数を数える 
     const auto num_reliable_lms_ref = ref_keyfrm.get_num_tracked_landmarks(min_num_obs_thr);
 
     // When the mapping module skips localBA, it does not insert keyframes
+    // マッピングモジュールで、キーフレームのキューが2以上の場合、true
     const auto mapper_is_skipping_localBA = mapper_->is_skipping_localBA();
 
     constexpr unsigned int num_enough_keyfrms_thr = 5;
+    // キーフレーム数が5より大きい場合、true
+    // あんまり当てにならないような気がする
     const bool enough_keyfrms = map_db->get_num_keyframes() > num_enough_keyfrms_thr;
 
     // New keyframe is needed if the time elapsed since the last keyframe insertion reaches the threshold
     bool max_interval_elapsed = false;
+    // max_interval_ はデフォルトで1.0
     if (max_interval_ > 0.0) {
+        // 最後に挿入されたキーフレームが存在し、最後に挿入されたキーフレームのタイムスタンプから max_interval_ 以上経過している場合、true
         max_interval_elapsed = last_inserted_keyfrm && last_inserted_keyfrm->timestamp_ + max_interval_ <= curr_frm.timestamp_;
     }
     bool min_interval_elapsed = true;
+    // min_interval_ はデフォルトで0.1
     if (min_interval_ > 0.0) {
+        // 最後に挿入されたキーフレームが存在しないか、最後に挿入されたキーフレームのタイムスタンプから min_interval_ 以上経過している場合、true
         min_interval_elapsed = !last_inserted_keyfrm || last_inserted_keyfrm->timestamp_ + min_interval_ <= curr_frm.timestamp_;
     }
     bool max_distance_traveled = false;
+    // max_distance_ はデフォルトで-1.0
     if (max_distance_ > 0.0) {
+        // 最後に挿入されたキーフレームが存在し、最後に挿入されたキーフレームの位置から max_distance_ 以上離れている場合、true
         max_distance_traveled = last_inserted_keyfrm && (last_inserted_keyfrm->get_trans_wc() - curr_frm.get_trans_wc()).norm() > max_distance_;
     }
     // New keyframe is needed if the field-of-view of the current frame is changed a lot
+    // lms_ratio_thr_view_changed_ はデフォルトで0.5
+    // 現在フレームが観測した信頼可能なランドマーク数が、参照キーフレームよりも lms_ratio_thr_view_changed_ 倍以上少ない場合、true
     const bool view_changed = num_reliable_lms < num_reliable_lms_ref * lms_ratio_thr_view_changed_;
     // const bool view_changed = num_tracked_lms < num_tracked_lms_on_ref_keyfrm * lms_ratio_thr_view_changed_;
+    // enough_lms_thr_ はデフォルトで100
+    // 現在フレームが観測した信頼可能なランドマーク数が、 enough_lms_thr_ 未満の場合、true
     const bool not_enough_lms = num_reliable_lms < enough_lms_thr_;
 
     // (Mandatory for keyframe insertion)
     // New keyframe is needed if the number of 3D points exceeds the threshold,
     // and concurrently the ratio of the reliable 3D points larger than the threshold ratio
     constexpr unsigned int num_tracked_lms_thr_unstable = 15;
+    // 現在フレームが観測したランドマーク数が15未満の場合、true
     bool tracking_is_unstable = num_tracked_lms < num_tracked_lms_thr_unstable;
+    // lms_ratio_thr_almost_all_lms_are_tracked_ はデフォルトで0.9
+    // 現在フレームが観測した信頼可能なランドマーク数が、参照キーフレームよりも lms_ratio_thr_almost_all_lms_are_tracked_ 倍以上多い場合、true
     bool almost_all_lms_are_tracked = num_reliable_lms > num_reliable_lms_ref * lms_ratio_thr_almost_all_lms_are_tracked_;
     SPDLOG_TRACE("keyframe_inserter: num_reliable_lms_ref={}", num_reliable_lms_ref);
     SPDLOG_TRACE("keyframe_inserter: num_reliable_lms={}", num_reliable_lms);
@@ -98,14 +117,19 @@ bool keyframe_inserter::new_keyframe_is_needed(data::map_database* map_db,
     SPDLOG_TRACE("keyframe_inserter: mapper_is_skipping_localBA={}", mapper_is_skipping_localBA);
     return (max_interval_elapsed || max_distance_traveled || view_changed || not_enough_lms)
            && (!enough_keyfrms || min_interval_elapsed)
+           // 現在フレームで15個以上のランドマークを観測する必要がある
            && !tracking_is_unstable
+           // 参照キーフレームより環境が、0.1以上変わっている必要がある
            && !almost_all_lms_are_tracked
+           // ローカルバンドル調整がスキップされていない必要がある
            && !mapper_is_skipping_localBA;
 }
 
 std::shared_ptr<data::keyframe> keyframe_inserter::insert_new_keyframe(data::map_database* map_db,
                                                                        data::frame& curr_frm) {
+    // 挿入するキーフレームを作成
     auto keyfrm = data::keyframe::make_keyframe(map_db->next_keyframe_id_++, curr_frm);
+    // キーフレームのランドマークを更新
     keyfrm->update_landmarks();
 
     for (const auto& id_mkr2d : keyfrm->markers_2d_) {
@@ -124,7 +148,9 @@ std::shared_ptr<data::keyframe> keyframe_inserter::insert_new_keyframe(data::map
     }
 
     // Queue up the keyframe to the mapping module
+    // monocular ならif文内の処理を行う
     if (!keyfrm->depth_is_available()) {
+        // マッピングモジュールにキーフレームをエンキュー
         queue_keyframe(keyfrm);
         return keyfrm;
     }

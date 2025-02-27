@@ -17,6 +17,7 @@ unsigned int fuse::detect_duplication(const std::shared_ptr<data::keyframe>& key
                                       std::unordered_map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>>& duplicated_lms_in_keyfrm,
                                       std::unordered_map<unsigned int, std::shared_ptr<data::landmark>>& new_connections,
                                       bool do_reprojection_matching) const {
+    // ワールド座標系で見たkeyfrm(=fuse_tgt_keyfrm)の中心位置
     const Vec3_t trans_wc = -rot_cw.transpose() * trans_cw;
     unsigned int num_fused = 0;
     std::unordered_set<unsigned int> already_matched_idx_in_keyfrm;
@@ -38,8 +39,10 @@ unsigned int fuse::detect_duplication(const std::shared_ptr<data::keyframe>& key
         const Vec3_t pos_w = lm->get_pos_in_world();
 
         // Reproject and compute visibility
+        // 再投影したランドマークの位置
         Vec2_t reproj;
         float x_right;
+        // equirectangularの場合は常にtrue
         const bool in_image = keyfrm->camera_->reproject_to_image(rot_cw, trans_cw, pos_w, reproj, x_right);
 
         // Ignore if it is reprojected outside the image
@@ -52,23 +55,34 @@ unsigned int fuse::detect_duplication(const std::shared_ptr<data::keyframe>& key
         const auto cam_to_lm_dist = cam_to_lm_vec.norm();
         const auto margin_far = 1.3;
         const auto margin_near = 1.0 / margin_far;
+        // data/landmark.cc の update_mean_normal_and_obs_scale_variance()で計算された値を使っている
         const auto max_cam_to_lm_dist = margin_far * lm->get_max_valid_distance();
         const auto min_cam_to_lm_dist = margin_near * lm->get_min_valid_distance();
 
+        // ランドマークごとに計算された範囲外の場合は無視
         if (cam_to_lm_dist < min_cam_to_lm_dist || max_cam_to_lm_dist < cam_to_lm_dist) {
             continue;
         }
 
         // Compute the angle formed by the average vector of the 3D point observation,
         // and discard it if it is wider than the threshold value (60 degrees)
+        // カメラ位置からランドマークへのベクトルの平均(長さ1で正規化済み)(data/landmark.cc の update_mean_normal_and_obs_scale_variance()で計算された値)
         const Vec3_t obs_mean_normal = lm->get_obs_mean_normal();
 
+        // cam_to_lm_vec が正規化されていないので、cam_to_lm_distを乗算している
+        // 平均的なランドマークまでのベクトルとのなす角度が60度より大きい場合は無視
         if (cam_to_lm_vec.dot(obs_mean_normal) < 0.5 * cam_to_lm_dist) {
             continue;
         }
 
         // Acquire keypoints in the cell where the reprojected 3D points exist
+        // num_levels_ は ORB のスケールレベルの数(ピラミッドの数)(デフォルトで8)
+        // log_scale_factor_ は ORB のスケールファクタの対数(デフォルトでlog1.2)
+        // 0からnum_levels_-1までのスケールレベルを予測
         const auto pred_scale_level = lm->predict_scale_level(cam_to_lm_dist, keyfrm->orb_params_->num_levels_, keyfrm->orb_params_->log_scale_factor_);
+        // mapping_module.cc の detect_duplication() からの呼び出しでは、margin は 3.0 が指定されている
+        // global_optimization_module.cc の replace_duplicated_landmarks() からの呼び出しでは、margin は 4.0 が指定されている
+        // ランドマークを投影した位置からの距離が margin * keyfrm->orb_params_->scale_factors_.at(pred_scale_level) より短い特徴点のインデックスを取得
         const auto indices = keyfrm->get_keypoints_in_cell(reproj(0), reproj(1), margin * keyfrm->orb_params_->scale_factors_.at(pred_scale_level));
 
         if (indices.empty()) {
@@ -90,12 +104,16 @@ unsigned int fuse::detect_duplication(const std::shared_ptr<data::keyframe>& key
             const auto scale_level = static_cast<unsigned int>(undist_keypt.octave);
 
             // TODO: shoud determine the scale with 'keyfrm-> get_keypts_in_cell ()'
+            // scale_level == pred_scale_level or scale_level == pred_scale_level - 1
             if (scale_level + 1 < pred_scale_level || pred_scale_level < scale_level) {
                 continue;
             }
 
+            // mapping_module.cc の detect_duplication() からの呼び出しでは、do_reprojection_matching は true が指定されている
+            // global_optimization_module.cc の replace_duplicated_landmarks() からの呼び出しでは、do_reprojection_matching は false が指定されている
             if (do_reprojection_matching) {
                 if (!keyfrm->frm_obs_.stereo_x_right_.empty() && keyfrm->frm_obs_.stereo_x_right_.at(idx) >= 0) {
+                    // ステレオカメラの場合
                     // Compute reprojection error with 3 degrees of freedom if a stereo match exists
                     const auto e_x = reproj(0) - undist_keypt.pt.x;
                     const auto e_y = reproj(1) - undist_keypt.pt.y;
@@ -116,6 +134,7 @@ unsigned int fuse::detect_duplication(const std::shared_ptr<data::keyframe>& key
 
                     // n=2
                     constexpr float chi_sq_2D = 5.99146;
+                    // カイ二乗値 よりも 再投影誤差の2乗*スケールファクタの2乗の逆数 が大きい場合は無視
                     if (chi_sq_2D < reproj_error_sq * keyfrm->orb_params_->inv_level_sigma_sq_.at(scale_level)) {
                         continue;
                     }

@@ -33,7 +33,9 @@ typedef DBoW2::FeatureVector bow_feature_vector;
 #else
 
 typedef fbow::Vocabulary bow_vocabulary;
+// 画像全体のBoW表現 first: (葉)ノードID, second: ノードの重み
 typedef fbow::BoWVector bow_vector;
+// 特徴量のBoW表現 first: ノードID, second: ノードに分類された特徴量のインデックスのリスト
 typedef fbow::BoWFeatVector bow_feature_vector;
 
 #endif // USE_DBOW2

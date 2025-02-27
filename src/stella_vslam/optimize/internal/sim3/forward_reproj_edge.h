@@ -72,6 +72,7 @@ inline void base_forward_reproj_edge::computeError() {
     const Vec3_t pos_1 = Sim3_12.map(pos_2);
     // 再投影誤差を計算
     const Vec2_t obs(_measurement);
+    // equirectangular の場合、歪みを無視して計算
     _error = obs - cam_project(pos_1);
 }
 

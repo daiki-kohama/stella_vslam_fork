@@ -53,6 +53,7 @@ inline void shot_vertex::setToOriginImpl() {
 }
 
 inline void shot_vertex::oplusImpl(const number_t* update_) {
+    // http://blog.livedoor.jp/tmako123-programming/archives/56380217.html の位置姿勢の更新式と同じ
     Eigen::Map<const Vec6_t> update(update_);
     setEstimate(g2o::SE3Quat::exp(update) * estimate());
 }

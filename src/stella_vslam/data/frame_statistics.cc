@@ -7,20 +7,26 @@ namespace data {
 
 void frame_statistics::update_frame_statistics(const data::frame& frm, const bool is_lost) {
     if (frm.pose_is_valid()) {
+        // 参照キーフレーム座標系から現在フレーム座標系への変換行列
         const Mat44_t rel_cam_pose_from_ref_keyfrm = frm.get_pose_cw() * frm.ref_keyfrm_->get_pose_wc();
 
+        // キーフレームを参照しているフレームを更新
         frm_ids_of_ref_keyfrms_[frm.ref_keyfrm_].push_back(frm.id_);
 
         ++num_valid_frms_;
         assert(!ref_keyfrms_.count(frm.id_));
+        // フレームの参照するキーフレームを記録
         ref_keyfrms_[frm.id_] = frm.ref_keyfrm_;
         assert(!rel_cam_poses_from_ref_keyfrms_.count(frm.id_));
+        // フレームの参照キーフレーム座標系からの相対姿勢を記録
         rel_cam_poses_from_ref_keyfrms_[frm.id_] = rel_cam_pose_from_ref_keyfrm;
         assert(!timestamps_.count(frm.id_));
+        // フレームのタイムスタンプを記録
         timestamps_[frm.id_] = frm.timestamp_;
     }
 
     assert(!is_lost_frms_.count(frm.id_));
+    // フレームでトラッキングが失敗したかどうかを記録
     is_lost_frms_[frm.id_] = is_lost;
 }
 

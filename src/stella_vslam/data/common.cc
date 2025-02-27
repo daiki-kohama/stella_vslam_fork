@@ -84,6 +84,7 @@ void assign_keypoints_to_grid(const camera::base* camera, const std::vector<cv::
                               std::vector<std::vector<std::vector<unsigned int>>>& keypt_indices_in_cells) {
     // Pre-allocate memory
     const unsigned int num_keypts = undist_keypts.size();
+    // なぜ以下のように計算？グリッド内の平均的なキーポイント数の半分を予約する
     const unsigned int num_to_reserve = 0.5 * num_keypts / (camera->num_grid_cols_ * camera->num_grid_rows_);
     keypt_indices_in_cells.resize(camera->num_grid_cols_);
     for (auto& keypt_indices_in_row : keypt_indices_in_cells) {
@@ -123,6 +124,7 @@ std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, cons
     std::vector<unsigned int> indices;
     indices.reserve(undist_keypts.size());
 
+    // 対象の特徴点が存在するセルの範囲を計算
     const int min_cell_idx_x = std::max(0, cvFloor((ref_x - camera->img_bounds_.min_x_ - margin) * camera->inv_cell_width_));
     if (static_cast<int>(camera->num_grid_cols_) <= min_cell_idx_x) {
         return indices;
@@ -147,6 +149,7 @@ std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, cons
 
     for (int cell_idx_x = min_cell_idx_x; cell_idx_x <= max_cell_idx_x; ++cell_idx_x) {
         for (int cell_idx_y = min_cell_idx_y; cell_idx_y <= max_cell_idx_y; ++cell_idx_y) {
+            // (ref_x, ref_y)付近のセルに存在する特徴点のインデックスを取得
             const auto& keypt_indices_in_cell = keypt_indices_in_cells.at(cell_idx_x).at(cell_idx_y);
             if (keypt_indices_in_cell.empty()) {
                 continue;
@@ -164,6 +167,7 @@ std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, cons
                     }
                 }
 
+                // ref_x, ref_yからの距離を計算
                 const float dist_x = undist_keypt.pt.x - ref_x;
                 const float dist_y = undist_keypt.pt.y - ref_y;
 

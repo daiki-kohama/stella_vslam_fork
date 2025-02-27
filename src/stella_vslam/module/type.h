@@ -26,8 +26,10 @@ struct keyframe_set {
         : keyfrm_set_(keyfrm_set), lead_keyfrm_(lead_keyfrm), continuity_(continuity) {}
     std::set<std::shared_ptr<data::keyframe>> keyfrm_set_;
     std::shared_ptr<data::keyframe> lead_keyfrm_;
+    // 何回連続して検出されたか
     unsigned int continuity_ = 0;
 
+    // 両方に属するキーフレームが存在しなければtrueを返す
     bool intersection_is_empty(const std::set<std::shared_ptr<data::keyframe>>& other_set) const {
         for (const auto& this_keyfrm : keyfrm_set_) {
             if (static_cast<bool>(other_set.count(this_keyfrm))) {

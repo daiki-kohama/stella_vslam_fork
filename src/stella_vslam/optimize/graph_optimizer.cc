@@ -35,14 +35,17 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
 
     g2o::SparseOptimizer optimizer;
     auto terminateAction = new terminate_action;
+    // 閾値を1e-3に設定
     terminateAction->setGainThreshold(1e-3);
     optimizer.addPostIterationAction(terminateAction);
     optimizer.setAlgorithm(algorithm);
 
     // 2. Add vertices
 
+    // 全てのキーフレームを取得
     const auto all_keyfrms = curr_keyfrm->graph_node_->get_keyframes_from_root();
     std::unordered_set<unsigned int> already_found_landmark_ids;
+    // 全てのランドマークを取得
     std::vector<std::shared_ptr<data::landmark>> all_lms;
     for (const auto& keyfrm : all_keyfrms) {
         for (const auto& lm : keyfrm->get_landmarks()) {
@@ -64,6 +67,7 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
     // Transform the pre-modified poses of all the keyframes to Sim3, and save them
     eigen_alloc_unord_map<unsigned int, g2o::Sim3> Sim3s_cw;
     // Save the added vertices
+    // キーフレームの頂点ノードを保存
     std::unordered_map<unsigned int, internal::sim3::shot_vertex*> vertices;
 
     constexpr int min_num_shared_lms = 100;
@@ -78,15 +82,19 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
 
         // BEFORE optimization, check if the poses have been already modified
         const auto iter = pre_corrected_Sim3s.find(keyfrm);
+        // 事前に計算したポーズが見つかった場合
         if (iter != pre_corrected_Sim3s.end()) {
             // BEFORE optimization, set the already-modified poses for verices
             Sim3s_cw[id] = iter->second;
+            // 事前に計算された姿勢を頂点に設定
             keyfrm_vtx->setEstimate(iter->second);
         }
+        // 事前に計算したポーズが見つからなかった場合
         else {
             // Transform an unmodified pose to Sim3, and set it for a vertex
             const Mat33_t rot_cw = keyfrm->get_rot_cw();
             const Vec3_t trans_cw = keyfrm->get_trans_cw();
+            // キーフレームの姿勢をSim3に変換
             const g2o::Sim3 Sim3_cw(rot_cw, trans_cw, 1.0);
 
             Sim3s_cw[id] = Sim3_cw;
@@ -94,6 +102,7 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
         }
 
         // Fix the loop keyframe or root keyframe
+        // ループキーフレームまたはルートキーフレームを固定
         if (*keyfrm == *loop_keyfrm || keyfrm->graph_node_->is_spanning_root()) {
             keyfrm_vtx->setFixed(true);
         }
@@ -126,6 +135,7 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
         };
 
     // Add loop edges only over the number of shared landmarks threshold
+    // loop_connections はループクロージングによって生まれる新しい接続で、キーフレームに対して接続されるキーフレームの集合
     for (const auto& loop_connection : loop_connections) {
         auto keyfrm = loop_connection.first;
         const auto& connected_keyfrms = loop_connection.second;
@@ -139,6 +149,7 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
 
             // Except the current vs loop edges,
             // Add the loop edges only over the minimum number of shared landmarks threshold
+            // 現在のキーフレームとクローズするキーフレームでない and 共通するランドマークの数が min_num_shared_lms(=100) より少ない場合はスキップ
             if (!(id1 == curr_keyfrm->id_ && id2 == loop_keyfrm->id_)
                 && keyfrm->graph_node_->get_num_shared_landmarks(connected_keyfrm) < min_num_shared_lms) {
                 continue;
@@ -161,8 +172,11 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
         // Use only non-modified poses in the covisibility information
         // (Both camera poses should be non-modified in order to compute the relative pose correctly)
         const auto iter1 = non_corrected_Sim3s.find(keyfrm);
+        // iter1->second で取得できるのは、ワールド座標系からキーフレーム座標系への変換行列では?
+        // iter1->second.inverse() にする必要があると思われる
         const g2o::Sim3 Sim3_w1 = ((iter1 != non_corrected_Sim3s.end()) ? iter1->second : Sim3s_cw.at(id1)).inverse();
 
+        // 親のキーフレームを取得
         auto parent_node = keyfrm->graph_node_->get_spanning_parent();
         if (parent_node) {
             const auto id2 = parent_node->id_;
@@ -185,6 +199,7 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
         }
 
         // Add all the loop edges with any number of shared landmarks
+        // 以前にループクロージングしたキーフレームとの接続を追加
         const auto loop_edges = keyfrm->graph_node_->get_loop_edges();
         for (auto connected_keyfrm : loop_edges) {
             const auto id2 = connected_keyfrm->id_;
@@ -207,6 +222,7 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
         }
 
         // Add the covisibility information over the minimum number of shared landmarks threshold
+        // 共通するランドマークの数が min_num_shared_lms(=100) より多いキーフレームを取得
         const auto connected_keyfrms = keyfrm->graph_node_->get_covisibilities_over_min_num_shared_lms(min_num_shared_lms);
         for (auto connected_keyfrm : connected_keyfrms) {
             // null check
@@ -265,6 +281,7 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
         // For modification of a point-cloud, save the post-modified poses of all the keyframes
         std::unordered_map<unsigned int, g2o::Sim3> corrected_Sim3s_wc;
 
+        // 最適化の結果に合わせて、キーフレームのポーズを更新
         for (auto keyfrm : all_keyfrms) {
             const auto id = keyfrm->id_;
 
@@ -287,14 +304,18 @@ void graph_optimizer::optimize(const std::shared_ptr<data::keyframe>& loop_keyfr
                 continue;
             }
 
+            // 参照するキーフレームのIDを取得
             const auto id = (found_lm_to_ref_keyfrm_id.count(lm->id_))
                                 ? found_lm_to_ref_keyfrm_id.at(lm->id_)
                                 : lm->get_ref_keyframe()->id_;
 
+            // 最適化前のキーフレームのポーズ(ワールド座標系からキーフレーム座標系への変換行列)
             const g2o::Sim3& Sim3_cw = Sim3s_cw.at(id);
+            // 最適化後のキーフレームのポーズ(キーフレーム座標系からワールド座標系への変換行列)
             const g2o::Sim3& corrected_Sim3_wc = corrected_Sim3s_wc.at(id);
 
             const Vec3_t pos_w = lm->get_pos_in_world();
+            // 参照するキーフレームの最適化前後での変換行列を使って、ランドマークの位置を修正
             const Vec3_t corrected_pos_w = corrected_Sim3_wc.map(Sim3_cw.map(pos_w));
 
             lm->set_pos_in_world(corrected_pos_w);

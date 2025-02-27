@@ -25,7 +25,7 @@ keyframe::keyframe(unsigned int id, const frame& frm)
       landmarks_(frm.get_landmarks()) {
     // set pose parameters (pose_wc_, trans_wc_) using frm.pose_cw_
     set_pose_cw(frm.get_pose_cw());
-    std::cout<<"src_frm_id: "<<frm.id_<<std::endl;
+    spdlog::debug("src_frm_id: {}", frm.id_);
 }
 
 keyframe::keyframe(const unsigned int id, const unsigned int src_frm_id, const double timestamp,
@@ -40,6 +40,7 @@ keyframe::keyframe(const unsigned int id, const unsigned int src_frm_id, const d
       landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.num_keypts_, nullptr)) {
     // set pose parameters (pose_wc_, trans_wc_) using pose_cw_
     set_pose_cw(pose_cw);
+    spdlog::debug("src_frm_id: {}", timestamp / camera->fps_);
 
     // The following process needs to take place:
     //   should set the pointers of landmarks_ using add_landmark()
@@ -320,6 +321,7 @@ void keyframe::erase_landmark(const std::shared_ptr<landmark>& lm) {
 
 void keyframe::update_landmarks() {
     std::lock_guard<std::mutex> lock(mtx_observations_);
+    // 新しいキーフレームを追加した後に実行される
     for (unsigned int idx = 0; idx < landmarks_.size(); ++idx) {
         auto lm = landmarks_.at(idx);
         if (!lm) {
@@ -425,6 +427,7 @@ float keyframe::compute_median_depth(const bool abs) const {
 
     std::vector<float> depths;
     depths.reserve(frm_obs_.num_keypts_);
+    // 回転行列の3行目(z座標を決める成分)と並進ベクトルのz成分を取得
     const Vec3_t rot_cw_z_row = pose_cw.block<1, 3>(2, 0);
     const float trans_cw_z = pose_cw(2, 3);
 
@@ -433,12 +436,15 @@ float keyframe::compute_median_depth(const bool abs) const {
             continue;
         }
         const Vec3_t pos_w = lm->get_pos_in_world();
+        // キーフレームから見たランドマークのz座標を計算
         const auto pos_c_z = rot_cw_z_row.dot(pos_w) + trans_cw_z;
         depths.push_back(abs ? std::abs(pos_c_z) : pos_c_z);
     }
 
     std::sort(depths.begin(), depths.end());
 
+    // z座標の中央値を返す
+    // 全方位画像の場合、z座標じゃなくて距離で返したほうがいいのでは?
     return depths.at((depths.size() - 1) / 2);
 }
 

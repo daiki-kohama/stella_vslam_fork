@@ -9,8 +9,10 @@ unsigned int area::match_in_consistent_area(data::frame& frm_1, data::frame& frm
                                             std::vector<int>& matched_indices_2_in_frm_1, int margin) {
     unsigned int num_matches = 0;
 
+    // 1フレーム目の特徴点の数で初期化
     matched_indices_2_in_frm_1 = std::vector<int>(frm_1.frm_obs_.undist_keypts_.size(), -1);
 
+    // 2フレーム目の特徴点の数で初期化
     std::vector<unsigned int> matched_dists_in_frm_2(frm_2.frm_obs_.undist_keypts_.size(), MAX_HAMMING_DIST);
     std::vector<int> matched_indices_1_in_frm_2(frm_2.frm_obs_.undist_keypts_.size(), -1);
 
@@ -19,6 +21,7 @@ unsigned int area::match_in_consistent_area(data::frame& frm_1, data::frame& frm
         const auto scale_level_1 = undist_keypt_1.octave;
 
         // Use only keypoints with the 0-th scale
+        // 元の画像サイズの特徴点のみ使用
         if (0 < scale_level_1) {
             continue;
         }
@@ -37,6 +40,7 @@ unsigned int area::match_in_consistent_area(data::frame& frm_1, data::frame& frm
         int best_idx_2 = -1;
 
         for (const auto idx_2 : indices) {
+            // try_initialize_for_monocular関数では check_orientation_ = true
             if (check_orientation_ && std::abs(util::angle::diff(frm_1.frm_obs_.undist_keypts_.at(idx_1).angle, frm_2.frm_obs_.undist_keypts_.at(idx_2).angle)) > 30.0) {
                 continue;
             }

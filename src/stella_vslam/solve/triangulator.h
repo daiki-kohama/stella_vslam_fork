@@ -57,7 +57,9 @@ Vec3_t triangulator::triangulate(const cv::Point2d& pt_1, const cv::Point2d& pt_
 }
 
 Vec3_t triangulator::triangulate(const Vec3_t& bearing_1, const Vec3_t& bearing_2, const Mat33_t& rot_21, const Vec3_t& trans_21) {
+    // 1から2への並進ベクトル
     const Vec3_t trans_12 = -rot_21.transpose() * trans_21;
+    // 1の座標系における2の方向ベクトル
     const Vec3_t bearing_2_in_1 = rot_21.transpose() * bearing_2;
 
     Mat22_t A;
@@ -76,6 +78,7 @@ Vec3_t triangulator::triangulate(const Vec3_t& bearing_1, const Vec3_t& bearing_
 
 Vec3_t triangulator::triangulate(const Vec3_t& bearing_1, const Vec3_t& bearing_2, const Mat44_t& cam_pose_1, const Mat44_t& cam_pose_2) {
     Mat44_t A;
+    // パトハック先生の論文 p.75 (4.9) 式
     A.row(0) = bearing_1(0) * cam_pose_1.row(2) - bearing_1(2) * cam_pose_1.row(0);
     A.row(1) = bearing_1(1) * cam_pose_1.row(2) - bearing_1(2) * cam_pose_1.row(1);
     A.row(2) = bearing_2(0) * cam_pose_2.row(2) - bearing_2(2) * cam_pose_2.row(0);

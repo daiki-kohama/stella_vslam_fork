@@ -48,6 +48,7 @@ inline void landmark_vertex::setToOriginImpl() {
 }
 
 inline void landmark_vertex::oplusImpl(const double* update) {
+    // http://blog.livedoor.jp/tmako123-programming/archives/56380217.html の3次元点群の更新式と同じ
     Eigen::Map<const Vec3_t> v(update);
     _estimate += v;
 }

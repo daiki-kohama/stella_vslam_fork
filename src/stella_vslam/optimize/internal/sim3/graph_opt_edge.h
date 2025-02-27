@@ -68,6 +68,8 @@ inline void graph_opt_edge::computeError() {
     const auto v2 = static_cast<const shot_vertex*>(_vertices.at(1));
 
     const g2o::Sim3 C(_measurement);
+    // v1, v2 から2から1への座標変換行列を計算して、さらにEdgeが持つ1から2への座標変換行列(最適化されない固定値)で変換
+    // 理想的には単位行列になるため、そこから誤差を計算
     const g2o::Sim3 error_ = C * v1->estimate() * v2->estimate().inverse();
     _error = error_.log();
 }

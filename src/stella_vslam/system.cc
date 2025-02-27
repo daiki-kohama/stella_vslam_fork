@@ -297,15 +297,19 @@ data::frame system::create_monocular_frame(const cv::Mat& img, const double time
     }
 
     // Undistort keypoints
+    // カメラに合わせてキーポイントの位置を歪まないように補正（全方位カメラの場合は何もしない）
     camera_->undistort_keypoints(keypts_, frm_obs.undist_keypts_);
 
     // Convert to bearing vector
+    // カメラに合わせてキーポイントの位置をベクトル（3次元の方向）に変換
     camera_->convert_keypoints_to_bearings(frm_obs.undist_keypts_, frm_obs.bearings_);
 
     // Assign all the keypoints into grid
+    // グリッド（全方位カメラは64*48）にキーポイントを割り当てる
     data::assign_keypoints_to_grid(camera_, frm_obs.undist_keypts_, frm_obs.keypt_indices_in_cells_);
 
     // Detect marker
+    // マーカーを検出（設定されている場合）
     std::unordered_map<unsigned int, data::marker2d> markers_2d;
     if (marker_detector_) {
         marker_detector_->detect(img_gray, markers_2d);

@@ -2,6 +2,7 @@
 #include "stella_vslam/util/converter.h"
 #include "stella_vslam/util/random_array.h"
 #include "stella_vslam/util/trigonometric.h"
+#include <iostream>
 
 namespace stella_vslam {
 namespace solve {
@@ -24,11 +25,15 @@ void essential_solver::find_via_ransac(const unsigned int max_num_iter, const bo
     }
 
     // RANSAC variables
+    // flotの取りうる最大値で初期化
     best_cost_ = std::numeric_limits<float>::max();
+    // inlierかどうかのフラグをfalseで初期化
     is_inlier_match_ = std::vector<bool>(num_matches, false);
 
     // minimum set of keypoint matches
+    // frame1の8個のbearing vector
     eigen_alloc_vector<Vec3_t> min_set_bearings_1(min_set_size);
+    // frame2の8個のbearing vector
     eigen_alloc_vector<Vec3_t> min_set_bearings_2(min_set_size);
 
     // shared variables in RANSAC loop
@@ -90,29 +95,37 @@ Mat33_t essential_solver::compute_E_21(const eigen_alloc_vector<Vec3_t>& bearing
 
     const auto num_points = bearings_1.size();
 
+    // 行数可変の列数9の行列を作成
     typedef Eigen::Matrix<Mat33_t::Scalar, Eigen::Dynamic, 9> CoeffMatrix;
+    // 行数num_points(=8)、列数9の行列Aを作成
     CoeffMatrix A(num_points, 9);
 
+    // 8点法の計算式に基づいてA行列を作成(パトハック先生の論文のp.30, eq2.14)
     for (unsigned int i = 0; i < num_points; i++) {
         A.block<1, 3>(i, 0) = bearings_2.at(i)(0) * bearings_1.at(i);
         A.block<1, 3>(i, 3) = bearings_2.at(i)(1) * bearings_1.at(i);
         A.block<1, 3>(i, 6) = bearings_2.at(i)(2) * bearings_1.at(i);
     }
 
+    //AのSVDを計算
     const Eigen::JacobiSVD<CoeffMatrix> init_svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
 
+    // Vの最後の列（最小特異値に対応する列）から初期エッセンシャル行列init_E_21を作成
     const Eigen::Matrix<Mat33_t::Scalar, 9, 1> v = init_svd.matrixV().col(8);
     // need transpose() because elements are contained as col-major after it was constructed from a pointer
     const Mat33_t init_E_21 = Mat33_t(v.data()).transpose();
 
+    // 初期エッセンシャル行列init_E_21に対して再度SVD
     const Eigen::JacobiSVD<Mat33_t> svd(init_E_21, Eigen::ComputeFullU | Eigen::ComputeFullV);
 
     const Mat33_t& U = svd.matrixU();
     Vec3_t lambda = svd.singularValues();
     const Mat33_t& V = svd.matrixV();
 
+    // エッセンシャル行列の特異値制約を満たすように特異値λの3番目の成分を0に設定
     lambda(2) = 0.0;
 
+    // 最終的なエッセンシャル行列E_21を構築
     const Mat33_t E_21 = U * lambda.asDiagonal() * V.transpose();
 
     return E_21;
@@ -171,14 +184,20 @@ unsigned int essential_solver::check_inliers(const Mat33_t& E_21, std::vector<bo
         const auto& bearing_1 = bearings_1_.at(matches_12_.at(i).first);
         const auto& bearing_2 = bearings_2_.at(matches_12_.at(i).second);
 
+        // カメラ2上のエピポーラ平面(平面の法線ベクトル)
         const Vec3_t epiplane_in_2 = E_21 * bearing_1;
+        // sin(θ) = |a×b|/|a||b| = |a×b|/[a] (|b| = 1) = sin(π/2 ± Δ) = cos(Δ)
         const float cos_in_2 = epiplane_in_2.cross(bearing_2).norm() / epiplane_in_2.norm();
 
+        // カメラ1上のエピポーラ平面(平面の法線ベクトル)
         const Vec3_t epiplane_in_1 = E_12 * bearing_2;
+        // sin(θ) = |a×b|/|a||b| = |a×b|/[a] (|b| = 1) = sin(π/2 ± Δ) = cos(Δ)
         const float cos_in_1 = epiplane_in_1.cross(bearing_1).norm() / epiplane_in_1.norm();
 
+        // 2つのエピポーラ平面とbearing vectorのなす角のcosineのうち最小のもの(揃っていない方)を取得
         float worst_cos_angle = std::min(cos_in_1, cos_in_2);
 
+        // cos_angle_thrより大きい(なす角が1度未満)場合はinlierとして扱う
         if (cos_angle_thr < worst_cos_angle) {
             is_inlier_match.at(i) = true;
             cost += 1.0 - worst_cos_angle;

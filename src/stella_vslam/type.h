@@ -140,6 +140,8 @@ template<class T, class U>
 using id_ordered_map = std::map<T, U, id_less<T>>;
 
 namespace nondeterministic {
+// build 時に DETERMINISTIC が定義されている場合は、std::set と std::map を id で順序付けする。
+// → RANSACで use_fixed_seed が true の場合、決定的な処理を行う。
 #ifdef DETERMINISTIC
 // For deterministic behavior, use set and map ordered by id.
 template<class T>

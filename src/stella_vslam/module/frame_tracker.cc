@@ -18,24 +18,32 @@ frame_tracker::frame_tracker(camera::base* camera, const std::shared_ptr<optimiz
     : camera_(camera), num_matches_thr_(num_matches_thr), use_fixed_seed_(use_fixed_seed), pose_optimizer_(pose_optimizer) {}
 
 bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame& last_frm, const Mat44_t& velocity) const {
+    // velocity は2つ前のフレーム座標系から1つ前のフレーム座標系への変換行列
     match::projection projection_matcher(0.9, true);
 
     // Set the initial pose by using the motion model
+    // 1つ前のフレームから現在のフレームへの動きが、2つ前のフレームから1つ前のフレームへの動きと同じと仮定して、
+    // 1つ前のフレームのポーズを使って現在のフレームのポーズを初期化する
     curr_frm.set_pose_cw(velocity * last_frm.get_pose_cw());
 
     // Initialize the 2D-3D matches
+    // フレームのランドマークを初期化
     curr_frm.erase_landmarks();
 
     // Reproject the 3D points observed in the last frame and find 2D-3D matches
+    // monocular カメラの場合、margin は 20 に設定される
     const float margin = (camera_->setup_type_ != camera::setup_type_t::Stereo) ? 20 : 10;
+    // 前フレームで観測したランドマークを現在のフレームに再投影して、特徴点とマッチしたランドマークを curr_frm.landmarks_ に記録する
     auto num_matches = projection_matcher.match_current_and_last_frames(curr_frm, last_frm, margin);
 
+    // マッチしたランドマークが num_matches_thr_(=10) 未満の場合、margin を2倍にして再度検索
     if (num_matches < num_matches_thr_) {
         // Increment the margin, and search again
         curr_frm.erase_landmarks();
         num_matches = projection_matcher.match_current_and_last_frames(curr_frm, last_frm, 2 * margin);
     }
 
+    // マッチしたランドマークが num_matches_thr_(=10) 未満の場合、motion based tracking は失敗
     if (num_matches < num_matches_thr_) {
         spdlog::debug("motion based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
         return false;
@@ -44,12 +52,15 @@ bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame&
     // Pose optimization
     Mat44_t optimized_pose;
     std::vector<bool> outlier_flags;
+    // マッチしたランドマークを再投影して、現在フレームのカメラポーズを最適化して optimized_pose, outlier_flags に記録し、inlier の数を返す
     pose_optimizer_->optimize(curr_frm, optimized_pose, outlier_flags);
     curr_frm.set_pose_cw(optimized_pose);
 
     // Discard the outliers
+    // アウトライアフラッグが立っているランドマークを削除
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
+    // inlier となったランドマークの数が num_matches_thr_(=10) 未満の場合、motion based tracking は失敗
     if (num_valid_matches < num_matches_thr_) {
         spdlog::debug("motion based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
         return false;
@@ -65,27 +76,34 @@ bool frame_tracker::bow_match_based_track(data::frame& curr_frm, const data::fra
     // Search 2D-2D matches between the ref keyframes and the current frame
     // to acquire 2D-3D matches between the frame keypoints and 3D points observed in the ref keyframe
     std::vector<std::shared_ptr<data::landmark>> matched_lms_in_curr;
+    // BoWとハミング距離ベースで参照キーフレームのランドマークと現在のフレームの特徴点をマッチングし、マッチングした特徴点インデックスとランドマークを matched_lms_in_curr に記録し、マッチした数を返す
     auto num_matches = bow_matcher.match_frame_and_keyframe(ref_keyfrm, curr_frm, matched_lms_in_curr);
 
+    // マッチしたランドマークが num_matches_thr_(=10) 未満の場合、bow match based tracking は失敗
     if (num_matches < num_matches_thr_) {
         spdlog::debug("bow match based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
         return false;
     }
 
     // Update the 2D-3D matches
+    // フレームにマッチしたランドマークを記録
     curr_frm.set_landmarks(matched_lms_in_curr);
 
     // Pose optimization
     // The initial value is the pose of the previous frame
+    // 前フレームのポーズを初期値として、現在フレームのカメラポーズを最適化
     curr_frm.set_pose_cw(last_frm.get_pose_cw());
     Mat44_t optimized_pose;
     std::vector<bool> outlier_flags;
+    // マッチしたランドマークを再投影して、現在フレームのカメラポーズを最適化して optimized_pose, outlier_flags に記録し、inlier の数を返す
     pose_optimizer_->optimize(curr_frm, optimized_pose, outlier_flags);
     curr_frm.set_pose_cw(optimized_pose);
 
     // Discard the outliers
+    // アウトライアフラッグが立っているランドマークを削除
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
+    // inlier となったランドマークの数が num_matches_thr_(=10) 未満の場合、bow match based tracking は失敗
     if (num_valid_matches < num_matches_thr_) {
         spdlog::debug("bow match based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
         return false;
@@ -101,27 +119,35 @@ bool frame_tracker::robust_match_based_track(data::frame& curr_frm, const data::
     // Search 2D-2D matches between the ref keyframes and the current frame
     // to acquire 2D-3D matches between the frame keypoints and 3D points observed in the ref keyframe
     std::vector<std::shared_ptr<data::landmark>> matched_lms_in_curr;
+    // 参照キーフレームの全てのランドマークと現在フレームの全ての特徴点でハミング距離を用いたマッチングを行い、8点アルゴリズム＋RANSACで最も良いモデルでinlierとなったマッチを matched_lms_in_curr に記録し、マッチした数を返す
     auto num_matches = robust_matcher.match_frame_and_keyframe(curr_frm, ref_keyfrm, matched_lms_in_curr, use_fixed_seed_);
 
+    // マッチしたランドマークが num_matches_thr_(=10) 未満の場合、robust match based tracking は失敗
     if (num_matches < num_matches_thr_) {
         spdlog::debug("robust match based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
         return false;
     }
 
     // Update the 2D-3D matches
+    // フレームにマッチしたランドマークを記録
     curr_frm.set_landmarks(matched_lms_in_curr);
 
     // Pose optimization
     // The initial value is the pose of the previous frame
+    // 前フレームのポーズを初期値として、現在フレームのカメラポーズを最適化
+    // せっかく8点アルゴリズム＋RANSACをしたから、その結果とキーフレームのポーズを使って初期化した方がいいのでは
     curr_frm.set_pose_cw(last_frm.get_pose_cw());
     Mat44_t optimized_pose;
     std::vector<bool> outlier_flags;
+    // マッチしたランドマークを再投影して、現在フレームのカメラポーズを最適化して optimized_pose, outlier_flags に記録し、inlier の数を返す
     pose_optimizer_->optimize(curr_frm, optimized_pose, outlier_flags);
     curr_frm.set_pose_cw(optimized_pose);
 
     // Discard the outliers
+    // アウトライアフラッグが立っているランドマークを削除
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
+    // inlier となったランドマークの数が num_matches_thr_(=10) 未満の場合、robust match based tracking は失敗
     if (num_valid_matches < num_matches_thr_) {
         spdlog::debug("robust match based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
         return false;
@@ -140,6 +166,7 @@ unsigned int frame_tracker::discard_outliers(const std::vector<bool>& outlier_fl
         }
 
         if (outlier_flags.at(idx)) {
+            // アウトライアフラッグが立っているランドマークを削除
             curr_frm.erase_landmark_with_index(idx);
         }
         else {

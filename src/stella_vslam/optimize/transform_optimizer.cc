@@ -18,8 +18,10 @@ transform_optimizer::transform_optimizer(const bool fix_scale, const unsigned in
     : fix_scale_(fix_scale), num_iter_(num_iter) {}
 
 unsigned int transform_optimizer::optimize(const std::shared_ptr<data::keyframe>& keyfrm_1, const std::shared_ptr<data::keyframe>& keyfrm_2,
+                                            // キーフレーム1のインデックスで並ぶ、キーフレーム2と共通するランドマーク
                                            std::vector<std::shared_ptr<data::landmark>>& matched_lms_in_keyfrm_2,
                                            ::g2o::Sim3& g2o_Sim3_12, const float chi_sq) const {
+    // loop_detector.cc からの呼び出しでは、chi_sq = 10
     const float sqrt_chi_sq = std::sqrt(chi_sq);
 
     // 1. Construct an optimizer
@@ -35,8 +37,10 @@ unsigned int transform_optimizer::optimize(const std::shared_ptr<data::keyframe>
 
     auto Sim3_12_vtx = new internal::sim3::transform_vertex();
     Sim3_12_vtx->setId(0);
+    // g2o_Sim3_12 には回転、平行移動、スケールが格納されている
     Sim3_12_vtx->setEstimate(g2o_Sim3_12);
     Sim3_12_vtx->setFixed(false);
+    // カメラが monocular なら fix_scale_ = false
     Sim3_12_vtx->fix_scale_ = fix_scale_;
     Sim3_12_vtx->rot_1w_ = keyfrm_1->get_rot_cw();
     Sim3_12_vtx->trans_1w_ = keyfrm_1->get_trans_cw();
@@ -63,6 +67,7 @@ unsigned int transform_optimizer::optimize(const std::shared_ptr<data::keyframe>
 
     for (unsigned int idx1 = 0; idx1 < num_matches; ++idx1) {
         // Only if matching information exists
+        // マッチしていないインデックスはスキップ
         if (!matched_lms_in_keyfrm_2.at(idx1)) {
             continue;
         }
@@ -78,6 +83,7 @@ unsigned int transform_optimizer::optimize(const std::shared_ptr<data::keyframe>
             continue;
         }
 
+        // キーフレーム2におけるランドマーク(特徴点)のインデックス
         const auto idx2 = lm_2->get_index_in_keyframe(keyfrm_2);
 
         if (idx2 < 0) {
@@ -106,18 +112,21 @@ unsigned int transform_optimizer::optimize(const std::shared_ptr<data::keyframe>
         auto edge_21 = mutual_edges.at(i).edge_21_;
 
         // Inlier check
+        // inlier なら、continue
         if (edge_12->chi2() < chi_sq && edge_21->chi2() < chi_sq) {
             continue;
         }
 
         // Outlier rejection
         const auto idx1 = mutual_edges.at(i).idx1_;
+        // outlier なら、nullptr にする
         matched_lms_in_keyfrm_2.at(idx1) = nullptr;
 
         mutual_edges.at(i).set_as_outlier();
         ++num_outliers;
     }
 
+    // inlier が 10個未満なら、0 を返す
     if (num_valid_matches - num_outliers < 10) {
         return 0;
     }
@@ -125,6 +134,7 @@ unsigned int transform_optimizer::optimize(const std::shared_ptr<data::keyframe>
     // 5. Perform optimization again
 
     optimizer.initializeOptimization();
+    // デフォルトで、num_iter_ = 10
     optimizer.optimize(num_iter_);
 
     // 6. Count the inliers

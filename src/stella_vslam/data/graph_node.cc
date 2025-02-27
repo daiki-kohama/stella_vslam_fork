@@ -19,11 +19,13 @@ graph_node::graph_node(std::shared_ptr<keyframe>& keyfrm)
 void graph_node::add_connection(const std::shared_ptr<keyframe>& keyfrm, const unsigned int num_shared_lms) {
     std::lock_guard<std::mutex> lock(mtx_);
     bool need_update = false;
+    // キーフレームの接続情報がなければ追加
     if (!connected_keyfrms_and_num_shared_lms_.count(keyfrm)) {
         // if `keyfrm` not exists
         connected_keyfrms_and_num_shared_lms_[keyfrm] = num_shared_lms;
         need_update = true;
     }
+    // キーフレームの共通ランドマーク数が更新された場合
     else if (connected_keyfrms_and_num_shared_lms_.at(keyfrm) != num_shared_lms) {
         // if the number of shared landmarks is updated
         connected_keyfrms_and_num_shared_lms_.at(keyfrm) = num_shared_lms;
@@ -78,6 +80,7 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
 
         const auto observations = lm->get_observations();
 
+        // ランドマークを共有しているキーフレームをカウント
         for (const auto& obs : observations) {
             auto keyfrm = obs.first;
             auto locked_keyfrm = keyfrm.lock();
@@ -89,6 +92,7 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
                 continue;
             }
             // count up number of shared landmarks of `keyfrm`
+            // キーフレームごとに、共有しているランドマーク数をカウント
             keyfrm_to_num_shared_lms[keyfrm]++;
         }
     }
@@ -98,6 +102,7 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
     }
 
     unsigned int max_num_shared_lms = 0;
+    // 共通するランドマークが最も多いキーフレーム
     std::shared_ptr<keyframe> nearest_covisibility = nullptr;
 
     // vector for sorting
@@ -108,21 +113,26 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
         const auto num_shared_lms = keyfrm_and_num_shared_lms.second;
 
         // nearest_covisibility with greatest id_ will be selected if number of shared landmarks are the same due to ordering of keyfrm_and_num_shared_lms.
+        // 共通するランドマークが最も多いキーフレームを選択
         if (max_num_shared_lms <= num_shared_lms) {
             max_num_shared_lms = num_shared_lms;
             nearest_covisibility = keyfrm;
         }
 
+        // min_num_shared_lmsより多い共通ランドマークを持つキーフレームを記録
+        // min_num_shared_lmsのデフォルトは15
         if (min_num_shared_lms < num_shared_lms) {
             num_shared_lms_and_covisibility_pairs.emplace_back(std::make_pair(num_shared_lms, keyfrm));
         }
     }
     // add ONE node at least
+    // min_num_shared_lmsより多い共通ランドマークを持つキーフレームがない場合、最も多い共通ランドマークを持つキーフレームを記録
     if (num_shared_lms_and_covisibility_pairs.empty()) {
         num_shared_lms_and_covisibility_pairs.emplace_back(std::make_pair(max_num_shared_lms, nearest_covisibility));
     }
 
     // add connection from the covisibility to myself
+    // 共通ランドマークを持つキーフレームにowner_keyfrmを追加
     for (const auto& num_shared_lms_and_covisibility : num_shared_lms_and_covisibility_pairs) {
         auto covisibility = num_shared_lms_and_covisibility.second;
         const auto num_shared_lms = num_shared_lms_and_covisibility.first;
@@ -131,8 +141,10 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
 
     // sort with number of shared landmarks and keyframe IDs for consistency; IDs are also in reverse order
     // to match selection of nearest_covisibility.
+    // 共通ランドマーク数が多い順にソート
     std::sort(num_shared_lms_and_covisibility_pairs.rbegin(), num_shared_lms_and_covisibility_pairs.rend(), cmp_num_shared_lms_and_keyfrm_pairs);
 
+    // ordered_covisibilities_ と同じ型で ordered_covisibilities を宣言
     decltype(ordered_covisibilities_) ordered_covisibilities;
     ordered_covisibilities.reserve(num_shared_lms_and_covisibility_pairs.size());
     decltype(ordered_num_shared_lms_) ordered_num_shared_lms;
@@ -145,8 +157,10 @@ void graph_node::update_connections(unsigned int min_num_shared_lms) {
     {
         std::lock_guard<std::mutex> lock(mtx_);
 
+        // connected_keyfrms_and_num_shared_lms_ を更新
         connected_keyfrms_and_num_shared_lms_ = decltype(connected_keyfrms_and_num_shared_lms_)(keyfrm_to_num_shared_lms.begin(), keyfrm_to_num_shared_lms.end());
 
+        // ordered_covisibilities_, ordered_num_shared_lms_ を更新
         ordered_covisibilities_ = ordered_covisibilities;
         ordered_num_shared_lms_ = ordered_num_shared_lms;
 
@@ -169,13 +183,16 @@ void graph_node::update_covisibility_orders_impl() {
     std::vector<std::pair<unsigned int, std::shared_ptr<keyframe>>> num_shared_lms_and_keyfrm_pairs;
     num_shared_lms_and_keyfrm_pairs.reserve(connected_keyfrms_and_num_shared_lms_.size());
 
+    // connected_keyfrms_and_num_shared_lms_ を num_shared_lms_and_keyfrm_pairs にコピー
     for (const auto& keyfrm_and_num_shared_lms : connected_keyfrms_and_num_shared_lms_) {
         num_shared_lms_and_keyfrm_pairs.emplace_back(std::make_pair(keyfrm_and_num_shared_lms.second, keyfrm_and_num_shared_lms.first.lock()));
     }
 
     // sort with number of shared landmarks and keyframe IDs for consistency
+    // 共通ランドマーク数が多い順にソート
     std::sort(num_shared_lms_and_keyfrm_pairs.rbegin(), num_shared_lms_and_keyfrm_pairs.rend(), cmp_num_shared_lms_and_keyfrm_pairs);
 
+    // ordered_covisibilities_, ordered_num_shared_lms_ を更新
     ordered_covisibilities_.clear();
     ordered_covisibilities_.reserve(num_shared_lms_and_keyfrm_pairs.size());
     ordered_num_shared_lms_.clear();
@@ -234,7 +251,9 @@ std::vector<std::shared_ptr<keyframe>> graph_node::get_covisibilities_over_min_n
         return std::vector<std::shared_ptr<keyframe>>();
     }
 
+    // ordered_num_shared_lms_ は共通ランドマーク数が多い順にソートされているので、itr は min_num_shared_lms 以上で最小の共通ランドマークを持つキーフレームを指す
     auto itr = std::upper_bound(ordered_num_shared_lms_.begin(), ordered_num_shared_lms_.end(), min_num_shared_lms, std::greater<unsigned int>());
+    // 全てのキーフレームが min_num_shared_lms 以上の共通ランドマークを持つ場合
     if (itr == ordered_num_shared_lms_.end()) {
         std::vector<std::shared_ptr<keyframe>> covisibilities;
         for (const auto& covisibility : ordered_covisibilities_) {
@@ -245,11 +264,14 @@ std::vector<std::shared_ptr<keyframe>> graph_node::get_covisibilities_over_min_n
         }
         return covisibilities;
     }
+    // 一部のキーフレームが min_num_shared_lms 以上の共通ランドマークを持つ場合
     else {
+        // 条件を満たす最後の要素の次のインデックス
         const auto upper_bound_idx = static_cast<unsigned int>(itr - ordered_num_shared_lms_.begin());
         std::vector<std::shared_ptr<keyframe>> covisibilities;
         unsigned int idx = 0;
         for (const auto& covisibility : ordered_covisibilities_) {
+            // idx が upper_bound_idx となるまでは、covisibilities に追加
             if (idx == upper_bound_idx) {
                 break;
             }

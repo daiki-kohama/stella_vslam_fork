@@ -17,10 +17,15 @@ unsigned int robust::match_for_triangulation(const std::shared_ptr<data::keyfram
 
     // Project the center of keyframe 1 to keyframe 2
     // to acquire the epipole coordinates of the candidate keyframe
+    // ワールド座標系におけるkeyfrm_1の中心座標
     const Vec3_t cam_center_1 = keyfrm_1->get_trans_wc();
+    // keyfrm_2のワールド座標系からカメラ座標系に変換する回転行列
     const Mat33_t rot_2w = keyfrm_2->get_rot_cw();
+    // keyfrm_2のワールド座標系からカメラ座標系に変換する並進ベクトル
     const Vec3_t trans_2w = keyfrm_2->get_trans_cw();
+    // keyfrm_2のカメラ座標系におけるepipole(=keyfrm_1の中心座標をkeyfrm_2のカメラ座標系に変換したもの)
     Vec3_t epiplane_in_keyfrm_2;
+    // keyfrm_1の中心座標をkeyfrm_2のカメラ座標系に変換してその正規化した方向ベクトルをepiplane_in_keyfrm_2に格納
     const bool valid_epiplane = keyfrm_2->camera_->reproject_to_bearing(rot_2w, trans_2w, cam_center_1, epiplane_in_keyfrm_2);
 
     // Acquire the 3D point information of the keframes
@@ -34,6 +39,7 @@ unsigned int robust::match_for_triangulation(const std::shared_ptr<data::keyfram
     // Save the keypoint idx in keyframe 2 which is already associated to the keypoint idx in keyframe 1
     std::vector<int> matched_indices_2_in_keyfrm_1(keyfrm_1->frm_obs_.num_keypts_, -1);
 
+    // BoWのノード番号とそのノード番号に対応する特徴点のインデックスを取得
     data::bow_feature_vector::const_iterator itr_1 = keyfrm_1->bow_feat_vec_.begin();
     data::bow_feature_vector::const_iterator itr_2 = keyfrm_2->bow_feat_vec_.begin();
     const data::bow_feature_vector::const_iterator itr_1_end = keyfrm_1->bow_feat_vec_.end();
@@ -41,9 +47,12 @@ unsigned int robust::match_for_triangulation(const std::shared_ptr<data::keyfram
 
     while (itr_1 != itr_1_end && itr_2 != itr_2_end) {
         // Check if the node numbers of BoW tree match
+        // BoWで分類したノードIDが一致しているか確認
+        // BoWで事前に特徴点を分類しているため、計算量が少なく済む
         if (itr_1->first == itr_2->first) {
             // If the node numbers of BoW tree match,
             // Check in practice if matches exist between keyframes
+            // 各キーフレームのBoWのノードIDが一致する特徴量のインデックスを取得
             const auto& keyfrm_1_indices = itr_1->second;
             const auto& keyfrm_2_indices = itr_2->second;
 
@@ -79,6 +88,7 @@ unsigned int robust::match_for_triangulation(const std::shared_ptr<data::keyfram
                         continue;
                     }
 
+                    // create_new_landmarks関数から呼ばれる場合、check_orientation_=false
                     if (check_orientation_ && std::abs(util::angle::diff(keypt_1.angle, keyfrm_2->frm_obs_.undist_keypts_.at(idx_2).angle)) > 30.0) {
                         continue;
                     }
@@ -91,25 +101,30 @@ unsigned int robust::match_for_triangulation(const std::shared_ptr<data::keyfram
                     const auto& desc_2 = keyfrm_2->frm_obs_.descriptors_.row(idx_2);
 
                     // Compute the distance
+                    // キーフレーム1と2の特徴量のハミング距離を計算
                     const auto hamm_dist = compute_descriptor_distance_32(desc_1, desc_2);
 
+                    // ハミング距離がbest_hamm_distよりも大きい場合はスルー
                     if (HAMMING_DIST_THR_LOW < hamm_dist || best_hamm_dist < hamm_dist) {
                         continue;
                     }
 
                     if (valid_epiplane && !is_stereo_keypt_1 && !is_stereo_keypt_2) {
                         // Do not use any keypoints near the epipole if both are not stereo keypoints
+                        // キーフレーム2のカメラ座標系から見たepipoleと特徴点2の方向ベクトルの内積を計算
                         const auto cos_dist = epiplane_in_keyfrm_2.dot(bearing_2);
                         // The threshold of the minimum angle formed by the epipole and the bearing vector is 3.0 degree
                         constexpr double cos_dist_thr = 0.99862953475;
 
                         // Do not allow to match if the formed angle is narrower that the threshold value
+                        // キーフレーム2のカメラ座標系から見たepipoleと特徴点2の方向ベクトルのなす角が3.0度より小さい場合はスルー
                         if (cos_dist_thr < cos_dist) {
                             continue;
                         }
                     }
 
                     // Check consistency in Matrix E
+                    // エピポーラ制約を満たしているか確認
                     const bool is_inlier = check_epipolar_constraint(bearing_1, bearing_2, E_12,
                                                                      keyfrm_1->orb_params_->scale_factors_.at(keypt_1.octave));
                     if (is_inlier) {
@@ -132,10 +147,12 @@ unsigned int robust::match_for_triangulation(const std::shared_ptr<data::keyfram
         }
         else if (itr_1->first < itr_2->first) {
             // Since the node number of keyframe 1 is smaller, increment the iterator until the node numbers match
+            // itr_2->first 以上の値が現れる最初の要素をitr_1に代入
             itr_1 = keyfrm_1->bow_feat_vec_.lower_bound(itr_2->first);
         }
         else {
             // Since the node number of keyframe 2 is smaller, increment the iterator until the node numbers match
+            // itr_1->first 以上の値が現れる最初の要素をitr_2に代入
             itr_2 = keyfrm_2->bow_feat_vec_.lower_bound(itr_1->first);
         }
     }
@@ -205,24 +222,30 @@ unsigned int robust::match_frame_and_keyframe(data::frame& frm, const std::share
                                               std::vector<std::shared_ptr<data::landmark>>& matched_lms_in_frm,
                                               bool use_fixed_seed) const {
     // Initialization
+    // フレームのキーポイント数
     const auto num_frm_keypts = frm.frm_obs_.num_keypts_;
+    // キーフレームのランドマーク
     const auto keyfrm_lms = keyfrm->get_landmarks();
     unsigned int num_inlier_matches = 0;
     matched_lms_in_frm = std::vector<std::shared_ptr<data::landmark>>(num_frm_keypts, nullptr);
 
     // Compute brute-force match
     std::vector<std::pair<int, int>> matches;
+    // キーフレームの全てのランドマークとフレームの全ての特徴点に対してマッチングを行う
     brute_force_match(frm.frm_obs_, keyfrm, matches);
 
     // Extract only inliers with eight-point RANSAC
     solve::essential_solver solver(frm.frm_obs_.bearings_, keyfrm->frm_obs_.bearings_, matches, use_fixed_seed);
+    // 8点アルゴリズムを用いてイテレーション50回のRANSACを行い、inlierのマッチングを取得
     solver.find_via_ransac(50, false);
     if (!solver.solution_is_valid()) {
         return 0;
     }
+    // inlierのマッチングを取得
     const auto is_inlier_matches = solver.get_inlier_matches();
 
     // Save the information
+    // inlierのマッチングのみを保存
     for (unsigned int i = 0; i < matches.size(); ++i) {
         if (!is_inlier_matches.at(i)) {
             continue;
@@ -282,6 +305,7 @@ unsigned int robust::brute_force_match(const data::frame_observation& frm_obs, c
                 continue;
             }
 
+            // frame_tracker.cc の robust_match_based_track からの呼び出しでは、check_orientation_ は true が指定されている
             if (check_orientation_ && std::abs(util::angle::diff(keypts_1.at(idx_1).angle, keypts_2.at(idx_2).angle)) > 30.0) {
                 continue;
             }
@@ -300,6 +324,7 @@ unsigned int robust::brute_force_match(const data::frame_observation& frm_obs, c
             }
         }
 
+        // ハミング距離が HAMMING_DIST_THR_LOW(=50) より大きいならばスキップ
         if (HAMMING_DIST_THR_LOW < best_hamm_dist) {
             continue;
         }
@@ -309,6 +334,7 @@ unsigned int robust::brute_force_match(const data::frame_observation& frm_obs, c
         }
 
         // Ratio test
+        // frame_tracker.cc の robust_match_based_track からの呼び出しでは、lowe_ratio_=0.8 が指定されている
         if (lowe_ratio_ * second_best_hamm_dist < static_cast<float>(best_hamm_dist)) {
             continue;
         }
@@ -336,10 +362,13 @@ unsigned int robust::brute_force_match(const data::frame_observation& frm_obs, c
 bool robust::check_epipolar_constraint(const Vec3_t& bearing_1, const Vec3_t& bearing_2,
                                        const Mat33_t& E_12, const float bearing_1_scale_factor) const {
     // Normal vector of the epipolar plane on keyframe 1
+    // キーフレーム1の座標系におけるエピポーラ平面の法線ベクトル
     const Vec3_t epiplane_in_1 = E_12 * bearing_2;
 
     // Acquire the angle formed by the normal vector and the bearing
+    // キーフレーム1の座標系におけるエピポーラ平面の法線ベクトルと特徴点1の方向ベクトルのなす角のcos値を計算
     const auto cos_residual = epiplane_in_1.dot(bearing_1) / epiplane_in_1.norm();
+    // キーフレーム1の座標系におけるエピポーラ平面の法線ベクトルと特徴点1の方向ベクトルのなす角の90度からの差を計算
     const auto residual_rad = M_PI / 2.0 - std::abs(std::acos(cos_residual));
 
     // The Inlier threshold value is 0.2 degree
@@ -350,6 +379,7 @@ bool robust::check_epipolar_constraint(const Vec3_t& bearing_1, const Vec3_t& be
 
     // The larger keypoint scale permits less constraints
     // TODO: should consider the threshold weighting
+    // 低解像度で抽出された特徴点では許容誤差を大きくする
     return residual_rad < residual_rad_thr * bearing_1_scale_factor;
 }
 

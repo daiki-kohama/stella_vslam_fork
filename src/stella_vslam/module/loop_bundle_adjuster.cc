@@ -13,6 +13,7 @@ namespace stella_vslam {
 namespace module {
 
 loop_bundle_adjuster::loop_bundle_adjuster(data::map_database* map_db, const unsigned int num_iter)
+    // num_iter はデフォルトで 10 に設定されている
     : map_db_(map_db), num_iter_(num_iter) {}
 
 void loop_bundle_adjuster::set_mapping_module(mapping_module* mapper) {
@@ -38,6 +39,7 @@ void loop_bundle_adjuster::optimize(const std::shared_ptr<data::keyframe>& curr_
         abort_loop_BA_ = false;
     }
 
+    // バンドルアジャストメント後のデータを格納するための変数
     std::unordered_set<unsigned int> optimized_keyfrm_ids;
     std::unordered_set<unsigned int> optimized_landmark_ids;
     eigen_alloc_unord_map<unsigned int, Vec3_t> lm_to_pos_w_after_global_BA;
@@ -73,19 +75,23 @@ void loop_bundle_adjuster::optimize(const std::shared_ptr<data::keyframe>& curr_
         eigen_alloc_unord_map<unsigned int, Mat44_t> keyfrm_to_cam_pose_cw_before_BA;
         std::list<std::shared_ptr<data::keyframe>> keyfrms_to_check;
         keyfrms_to_check.push_back(curr_keyfrm->graph_node_->get_spanning_root());
+        // ルートキーフレームから始まるスパニングツリーをたどり、各キーフレームの姿勢を更新
         while (!keyfrms_to_check.empty()) {
             auto parent = keyfrms_to_check.front();
             const Mat44_t cam_pose_wp = parent->get_pose_wc();
 
             const auto children = parent->graph_node_->get_spanning_children();
             for (auto child : children) {
+                // child がループBAで最適化されていない場合
                 if (!optimized_keyfrm_ids.count(child->id_)) {
                     // if `child` is NOT optimized by the loop BA
                     // propagate the pose correction from the spanning parent
 
                     // parent->child
+                    // BA前の親キーフレームから子キーフレームへの変換行列
                     const Mat44_t cam_pose_cp = child->get_pose_cw() * cam_pose_wp;
                     // world->child AFTER correction = parent->child * world->parent AFTER correction
+                    // 親キーフレームの最適化結果を使用した、ループBA後の親キーフレームから子キーフレームへの変換行列
                     keyfrm_to_pose_cw_after_global_BA[child->id_] = cam_pose_cp * keyfrm_to_pose_cw_after_global_BA.at(parent->id_);
                     // check as `child` has been corrected
                     optimized_keyfrm_ids.insert(child->id_);
@@ -106,6 +112,7 @@ void loop_bundle_adjuster::optimize(const std::shared_ptr<data::keyframe>& curr_
         spdlog::debug("update the positions of the landmarks");
         auto keyfrms = curr_keyfrm->graph_node_->get_keyframes_from_root();
         std::unordered_set<unsigned int> already_found_landmark_ids;
+        // keyfrms が観測する全てのランドマークを取得
         std::vector<std::shared_ptr<data::landmark>> lms;
         for (const auto& keyfrm : keyfrms) {
             for (const auto& lm : keyfrm->get_landmarks()) {
@@ -129,12 +136,15 @@ void loop_bundle_adjuster::optimize(const std::shared_ptr<data::keyframe>& curr_
                 continue;
             }
 
+            // ランドマークがループBAで最適化されている場合
             if (optimized_landmark_ids.count(lm->id_)) {
                 // if `lm` is optimized by the loop BA
 
                 // update with the optimized position
+                // ループBAで最適化された位置に更新
                 lm->set_pos_in_world(lm_to_pos_w_after_global_BA.at(lm->id_));
             }
+            // ランドマークがループBAで最適化されていない場合
             else {
                 // if `lm` is NOT optimized by the loop BA
 
@@ -147,12 +157,14 @@ void loop_bundle_adjuster::optimize(const std::shared_ptr<data::keyframe>& curr_
                 const Mat44_t pose_cw_before_BA = keyfrm_to_cam_pose_cw_before_BA.at(ref_keyfrm->id_);
                 const Mat33_t rot_cw_before_BA = pose_cw_before_BA.block<3, 3>(0, 0);
                 const Vec3_t trans_cw_before_BA = pose_cw_before_BA.block<3, 1>(0, 3);
+                // 最適化前の参照キーフレーム座標系での位置
                 const Vec3_t pos_c = rot_cw_before_BA * lm->get_pos_in_world() + trans_cw_before_BA;
 
                 // convert the position to the world-reference using the camera pose AFTER the correction
                 const Mat44_t cam_pose_wc = ref_keyfrm->get_pose_wc();
                 const Mat33_t rot_wc = cam_pose_wc.block<3, 3>(0, 0);
                 const Vec3_t trans_wc = cam_pose_wc.block<3, 1>(0, 3);
+                // 最適化後のキーフレーム座標系からワールド座標系への変換行列を使って、ワールド座標系の位置に変換
                 lm->set_pos_in_world(rot_wc * pos_c + trans_wc);
             }
             lm->update_mean_normal_and_obs_scale_variance();

@@ -30,6 +30,7 @@ bool bearing_vector::initialize(const data::frame& cur_frm, const std::vector<in
     cur_undist_keypts_ = cur_frm.frm_obs_.undist_keypts_;
     cur_bearings_ = cur_frm.frm_obs_.bearings_;
     // align matching information
+    // ref_frameとcur_frameのマッチングする特徴点のインデックスを格納
     ref_cur_matches_.clear();
     ref_cur_matches_.reserve(cur_frm.frm_obs_.undist_keypts_.size());
     for (unsigned int ref_idx = 0; ref_idx < ref_matches_with_cur.size(); ++ref_idx) {
@@ -40,6 +41,7 @@ bool bearing_vector::initialize(const data::frame& cur_frm, const std::vector<in
     }
 
     // compute an E matrix
+    // 基本行列を計算
     auto essential_solver = solve::essential_solver(ref_bearings_, cur_bearings_, ref_cur_matches_, use_fixed_seed_);
     essential_solver.find_via_ransac(num_ransac_iters_, false);
 
@@ -58,6 +60,7 @@ bool bearing_vector::reconstruct_with_E(const Mat33_t& E_ref_to_cur, const std::
     // found the most plausible pose from the FOUR hypothesis computed from the E matrix
 
     // decompose the E matrix
+    // 基本行列Eを回転行列と並進ベクトルに分解
     eigen_alloc_vector<Mat33_t> init_rots;
     eigen_alloc_vector<Vec3_t> init_transes;
     if (!solve::essential_solver::decompose(E_ref_to_cur, init_rots, init_transes)) {

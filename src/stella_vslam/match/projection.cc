@@ -31,6 +31,7 @@ unsigned int projection::match_frame_and_landmarks(data::frame& frm,
 
         // Acquire keypoints in the cell where the reprojected 3D points exist
         Vec2_t reproj = lm_to_reproj.at(local_lm->id_);
+        // 3D点が存在するセル内のキーポイントのインデックスを取得
         const auto indices_in_cell = frm.get_keypoints_in_cell(reproj(0), reproj(1),
                                                                margin * frm.orb_params_->scale_factors_.at(pred_scale_level),
                                                                pred_scale_level - 1, pred_scale_level);
@@ -38,6 +39,7 @@ unsigned int projection::match_frame_and_landmarks(data::frame& frm,
             continue;
         }
 
+        // ランドマークの特徴量
         const cv::Mat lm_desc = local_lm->get_descriptor();
 
         unsigned int best_hamm_dist = MAX_HAMMING_DIST;
@@ -63,6 +65,7 @@ unsigned int projection::match_frame_and_landmarks(data::frame& frm,
 
             const auto dist = compute_descriptor_distance_32(lm_desc, desc);
 
+            // ハミング距離が最も近い特徴点を取得
             if (dist < best_hamm_dist) {
                 second_best_hamm_dist = best_hamm_dist;
                 best_hamm_dist = dist;
@@ -76,13 +79,17 @@ unsigned int projection::match_frame_and_landmarks(data::frame& frm,
             }
         }
 
+        // ハミング距離が HAMMING_DIST_THR_HIGH(=100) 以下の場合はマッチング情報を追加
         if (best_hamm_dist <= HAMMING_DIST_THR_HIGH) {
             // Lowe's ratio test
+            // tracking_module.cc の search_local_landmarks からの呼び出しでは、lowe_ratio_=0.8 が指定されている
+            // スケールレベルが同じで、2番目にハミング距離の lowe_ratio_ 倍より最小距離が大きい場合はスキップ
             if (best_scale_level == second_best_scale_level && best_hamm_dist > lowe_ratio_ * second_best_hamm_dist) {
                 continue;
             }
 
             // Add the matching information
+            // ランドマークを追加
             frm.add_landmark(local_lm, best_idx);
             ++num_matches;
         }
@@ -97,11 +104,13 @@ unsigned int projection::match_current_and_last_frames(data::frame& curr_frm, co
     const Mat33_t rot_cw = curr_frm.get_rot_cw();
     const Vec3_t trans_cw = curr_frm.get_trans_cw();
 
+    // 現在のフレームのワールド座標位置
     const Vec3_t trans_wc = -rot_cw.transpose() * trans_cw;
 
     const Mat33_t rot_lw = last_frm.get_rot_cw();
     const Vec3_t trans_lw = last_frm.get_trans_cw();
 
+    // 現在のフレームの中心位置を前フレームの座標系に変換
     const Vec3_t trans_lc = rot_lw * trans_wc + trans_lw;
 
     // For non-monocular, check if the z component of the current-to-last translation vector is moving forward
@@ -116,6 +125,7 @@ unsigned int projection::match_current_and_last_frames(data::frame& curr_frm, co
 
     // Reproject the 3D points associated to the keypoints of the last frame,
     // then acquire the 2D-3D matches
+    // 前フレームのランドマークを現在フレームに投影してマッチングする
     for (unsigned int idx_last = 0; idx_last < last_frm.frm_obs_.num_keypts_; ++idx_last) {
         const auto& lm = last_frm.get_landmark(idx_last);
         if (!lm) {
@@ -134,6 +144,7 @@ unsigned int projection::match_current_and_last_frames(data::frame& curr_frm, co
         const bool in_image = curr_frm.camera_->reproject_to_image(rot_cw, trans_cw, pos_w, reproj, x_right);
 
         // Ignore if it is reprojected outside the image
+        // equirectangular の場合は常に in_image = true
         if (!in_image) {
             continue;
         }
@@ -142,6 +153,7 @@ unsigned int projection::match_current_and_last_frames(data::frame& curr_frm, co
         const auto last_scale_level = last_frm.frm_obs_.undist_keypts_.at(idx_last).octave;
         int min_level;
         int max_level;
+        // monocular カメラの場合は、assume_forward, assume_backward は false
         if (assume_forward) {
             min_level = last_scale_level;
             max_level = last_frm.orb_params_->num_levels_ - 1;
@@ -154,6 +166,8 @@ unsigned int projection::match_current_and_last_frames(data::frame& curr_frm, co
             min_level = last_scale_level - 1;
             max_level = last_scale_level + 1;
         }
+        // margin は、frame_tracker.cc からの呼び出しでは、monocular カメラの場合は 20
+        // 再投影座標位置周辺の特徴点インデックスを取得
         auto indices = curr_frm.get_keypoints_in_cell(reproj(0), reproj(1),
                                                       margin * curr_frm.orb_params_->scale_factors_.at(last_scale_level),
                                                       min_level, max_level);
@@ -161,6 +175,7 @@ unsigned int projection::match_current_and_last_frames(data::frame& curr_frm, co
             continue;
         }
 
+        // ランドマークの特徴量
         const auto lm_desc = lm->get_descriptor();
 
         unsigned int best_hamm_dist = MAX_HAMMING_DIST;
@@ -169,9 +184,11 @@ unsigned int projection::match_current_and_last_frames(data::frame& curr_frm, co
         for (const auto curr_idx : indices) {
             const auto& curr_lm = curr_frm.get_landmark(curr_idx);
             if (curr_lm && curr_lm->has_observation()) {
+                // 既に対応が取れているランドマークはスキップ
                 continue;
             }
 
+            // stereo カメラの場合
             if (!curr_frm.frm_obs_.stereo_x_right_.empty() && curr_frm.frm_obs_.stereo_x_right_.at(curr_idx) > 0) {
                 const float reproj_error = std::fabs(x_right - curr_frm.frm_obs_.stereo_x_right_.at(curr_idx));
                 if (margin * curr_frm.orb_params_->scale_factors_.at(last_scale_level) < reproj_error) {
@@ -179,25 +196,33 @@ unsigned int projection::match_current_and_last_frames(data::frame& curr_frm, co
                 }
             }
 
+            // frame_tracker.cc からの呼び出しでは、check_orientation_ は true
+            // キーポイントの向きが30度以上異なる場合はスキップ
+            // equirectangular では歪みが生じているため、正しく機能しないのでは?
             if (check_orientation_ && std::abs(util::angle::diff(last_frm.frm_obs_.undist_keypts_.at(idx_last).angle, curr_frm.frm_obs_.undist_keypts_.at(curr_idx).angle)) > 30.0) {
                 continue;
             }
 
+            // 現在フレームのインデックスの特徴量
             const auto& desc = curr_frm.frm_obs_.descriptors_.row(curr_idx);
 
+            // ハミング距離を計算
             const auto hamm_dist = compute_descriptor_distance_32(lm_desc, desc);
 
+            // ハミング距離が最小のものを選択
             if (hamm_dist < best_hamm_dist) {
                 best_hamm_dist = hamm_dist;
                 best_idx = curr_idx;
             }
         }
 
+        // 最小のハミング距離がHAMMING_DIST_THR_HIGH(=100)以上の場合はスキップ
         if (HAMMING_DIST_THR_HIGH < best_hamm_dist) {
             continue;
         }
 
         // The matching is valid
+        // ランドマークとキーポイントの対応を追加
         curr_frm.add_landmark(lm, best_idx);
         ++num_matches;
     }
@@ -227,6 +252,7 @@ unsigned int projection::match_frame_and_keyframe(const Mat44_t& cam_pose_cw,
     const Vec3_t trans_cw = cam_pose_cw.block<3, 1>(0, 3);
     const Vec3_t cam_center = -rot_cw.transpose() * trans_cw;
 
+    // loop_detector.cc からの呼び出しでは、keyfrm はループ候補のキーフレーム
     const auto landmarks = keyfrm->get_landmarks();
 
     // Reproject the 3D points associated to the keypoints of the keyframe,
@@ -240,6 +266,7 @@ unsigned int projection::match_frame_and_keyframe(const Mat44_t& cam_pose_cw,
             continue;
         }
         // Avoid duplication
+        // 既に対応が取れているランドマークはスキップ
         if (already_matched_lms.count(lm)) {
             continue;
         }
@@ -250,6 +277,7 @@ unsigned int projection::match_frame_and_keyframe(const Mat44_t& cam_pose_cw,
         // Reproject and compute visibility
         Vec2_t reproj;
         float x_right;
+        // equirectangularの場合は常にtrue
         const bool in_image = camera->reproject_to_image(rot_cw, trans_cw, pos_w, reproj, x_right);
 
         // Ignore if it is reprojected outside the image
@@ -258,6 +286,7 @@ unsigned int projection::match_frame_and_keyframe(const Mat44_t& cam_pose_cw,
         }
 
         // Check if it's within ORB scale levels
+        // loop_detector.cc からの呼び出しでは、cam_center は現在のキーフレームのカメラ中心
         const Vec3_t cam_to_lm_vec = pos_w - cam_center;
         const auto cam_to_lm_dist = cam_to_lm_vec.norm();
         constexpr auto margin_far = 1.3;
@@ -265,13 +294,20 @@ unsigned int projection::match_frame_and_keyframe(const Mat44_t& cam_pose_cw,
         const auto max_cam_to_lm_dist = margin_far * lm->get_max_valid_distance();
         const auto min_cam_to_lm_dist = margin_near * lm->get_min_valid_distance();
 
+        // カメラからランドマークまでの距離が適切な範囲内であるかを確認
+        // cam_center からとらえられていそうか確認
         if (cam_to_lm_dist < min_cam_to_lm_dist || max_cam_to_lm_dist < cam_to_lm_dist) {
             continue;
         }
 
         // Acquire keypoints in the cell where the reprojected 3D points exist
+        // loop_detector.cc からの呼び出しでは、orb_params は現在のキーフレームの ORB パラメータ
+        // スケールレベルを予測
         const auto pred_scale_level = lm->predict_scale_level(cam_to_lm_dist, orb_params->num_levels_, orb_params->log_scale_factor_);
 
+        // loop_detector.cc からの呼び出しでは、1回目 margin=10 で2回目 margin=3, frm_obs は現在のキーフレームの観測情報
+        // equirectangular の歪みを考慮していない
+        // 予測されたスケールレベルの周囲のスケールレベルで再投影位置から一定距離以内のキーポイントのインデックスを取得
         const auto indices = data::get_keypoints_in_cell(camera, frm_obs, reproj(0), reproj(1),
                                                          margin * orb_params->scale_factors_.at(pred_scale_level),
                                                          pred_scale_level - 1, pred_scale_level + 1);
@@ -286,10 +322,12 @@ unsigned int projection::match_frame_and_keyframe(const Mat44_t& cam_pose_cw,
         int best_idx = -1;
 
         for (unsigned long curr_idx : indices) {
+            // 既に対応が取れている特徴点はスキップ
             if (frm_landmarks.at(curr_idx)) {
                 continue;
             }
 
+            // loop_detector.cc からの呼び出しでは、check_orientation_ は false が指定されている
             if (check_orientation_ && std::abs(util::angle::diff(keyfrm->frm_obs_.undist_keypts_.at(idx).angle, frm_obs.undist_keypts_.at(curr_idx).angle)) > 30.0) {
                 continue;
             }
@@ -298,12 +336,14 @@ unsigned int projection::match_frame_and_keyframe(const Mat44_t& cam_pose_cw,
 
             const auto hamm_dist = compute_descriptor_distance_32(lm_desc, desc);
 
+            // ハミング距離が最小のものを選択
             if (hamm_dist < best_hamm_dist) {
                 best_hamm_dist = hamm_dist;
                 best_idx = curr_idx;
             }
         }
 
+        // loop_detector.cc からの呼び出しでは、1回目 hamm_dist_thr=100 で、2回目 hamm_dist_thr=64 が指定されている
         if (hamm_dist_thr < best_hamm_dist) {
             continue;
         }
@@ -321,10 +361,15 @@ unsigned int projection::match_by_Sim3_transform(const std::shared_ptr<data::key
     unsigned int num_matches = 0;
 
     // Convert Sim3 into SE3
+    // スケール込みの回転行列
     const Mat33_t s_rot_cw = Sim3_cw.block<3, 3>(0, 0);
+    // スケールを計算
     const auto s_cw = std::sqrt(s_rot_cw.block<1, 3>(0, 0).dot(s_rot_cw.block<1, 3>(0, 0)));
+    // 正規化された回転行列
     const Mat33_t rot_cw = s_rot_cw / s_cw;
+    // 正規化された並逆行列
     const Vec3_t trans_cw = Sim3_cw.block<3, 1>(0, 3) / s_cw;
+    // カメラ中心
     const Vec3_t cam_center = -rot_cw.transpose() * trans_cw;
 
     std::set<std::shared_ptr<data::landmark>> already_matched(matched_lms_in_keyfrm.begin(), matched_lms_in_keyfrm.end());
@@ -335,6 +380,7 @@ unsigned int projection::match_by_Sim3_transform(const std::shared_ptr<data::key
             continue;
         }
         if (already_matched.count(lm)) {
+            // 既にマッチングしているものはスキップ
             continue;
         }
 
@@ -344,9 +390,11 @@ unsigned int projection::match_by_Sim3_transform(const std::shared_ptr<data::key
         // Reproject and compute visibility
         Vec2_t reproj;
         float x_right;
+        // 画像座標系に投影
         const bool in_image = keyfrm->camera_->reproject_to_image(rot_cw, trans_cw, pos_w, reproj, x_right);
 
         // Ignore if it is reprojected outside the image
+        // equalrectangular の場合は常に true
         if (!in_image) {
             continue;
         }
@@ -359,20 +407,24 @@ unsigned int projection::match_by_Sim3_transform(const std::shared_ptr<data::key
         const auto max_cam_to_lm_dist = margin_far * lm->get_max_valid_distance();
         const auto min_cam_to_lm_dist = margin_near * lm->get_min_valid_distance();
 
+        // カメラからランドマークまでの距離が適切な範囲内であるかを確認
         if (cam_to_lm_dist < min_cam_to_lm_dist || max_cam_to_lm_dist < cam_to_lm_dist) {
             continue;
         }
 
         // Compute the angle formed by the average observation vector of the 3D points,
         // and discard it if it is wider than the threshold value (60 degrees)
+        // 平均的な観測時のランドマークの方向ベクトル
         const Vec3_t obs_mean_normal = lm->get_obs_mean_normal();
 
+        // 平均的な方向ベクトルとカメラからランドマークまでのベクトルのなす角が 60 度より大きい場合はスキップ
         if (cam_to_lm_vec.dot(obs_mean_normal) < 0.5 * cam_to_lm_dist) {
             continue;
         }
 
         // Acquire keypoints in the cell where the reprojected 3D points exist
         const auto pred_scale_level = lm->predict_scale_level(cam_to_lm_dist, keyfrm->orb_params_->num_levels_, keyfrm->orb_params_->log_scale_factor_);
+        // loop_detector.cc からの呼び出しでは、margin=10 が指定されている
         const auto indices = keyfrm->get_keypoints_in_cell(reproj(0), reproj(1), margin * keyfrm->orb_params_->scale_factors_.at(pred_scale_level));
 
         if (indices.empty()) {
@@ -393,6 +445,7 @@ unsigned int projection::match_by_Sim3_transform(const std::shared_ptr<data::key
             const auto scale_level = static_cast<unsigned int>(keyfrm->frm_obs_.undist_keypts_.at(idx).octave);
 
             // TODO: should determine the scale with 'keyfrm-> get_keypts_in_cell ()'
+            // scale_level == pred_scale_level or scale_level == pred_scale_level - 1 以外はスキップ
             if (scale_level < pred_scale_level - 1 || pred_scale_level < scale_level) {
                 continue;
             }
@@ -401,12 +454,14 @@ unsigned int projection::match_by_Sim3_transform(const std::shared_ptr<data::key
 
             const auto hamm_dist = compute_descriptor_distance_32(lm_desc, desc);
 
+            // ハミング距離が最小のものを選択
             if (hamm_dist < best_dist) {
                 best_dist = hamm_dist;
                 best_idx = idx;
             }
         }
 
+        // ハミング距離が HAMMING_DIST_THR_LOW(=50) より大きい場合はスキップ
         if (HAMMING_DIST_THR_LOW < best_dist) {
             continue;
         }
@@ -437,6 +492,7 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
     const auto landmarks_2 = keyfrm_2->get_landmarks();
 
     // Contain matching information if there are already matches between the keyframes 1 and 2
+    // 各フレームのランドマークのインデックスで、対応が取れているかどうかを示す
     std::vector<bool> is_already_matched_in_keyfrm_1(landmarks_1.size(), false);
     std::vector<bool> is_already_matched_in_keyfrm_2(landmarks_2.size(), false);
 
@@ -472,20 +528,24 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
                 continue;
             }
 
+            // 既に対応が取れているランドマークはスキップ
             if (is_already_matched_in_keyfrm_1.at(idx_1)) {
                 continue;
             }
 
             // 3D point coordinates with the global reference
             const Vec3_t pos_w = lm->get_pos_in_world();
+            // フレーム2のカメラ座標系での3D点の座標
             const Vec3_t pos_2 = s_rot_21w * pos_w + trans_21w;
 
             // Reproject and compute visibility
             Vec2_t reproj;
             float x_right;
+            // キーフレーム2での再投影位置
             const bool in_image = keyfrm_2->camera_->reproject_to_image(s_rot_21w, trans_21w, pos_w, reproj, x_right);
 
             // Ignore if it is reprojected outside the image
+            // equirectangular の場合は常に in_image = true
             if (!in_image) {
                 continue;
             }
@@ -497,12 +557,15 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
             const auto max_cam_to_lm_dist = margin_far * lm->get_max_valid_distance();
             const auto min_cam_to_lm_dist = margin_near * lm->get_min_valid_distance();
 
+            // 適切な範囲内であるかを確認
             if (cam_to_lm_dist < min_cam_to_lm_dist || max_cam_to_lm_dist < cam_to_lm_dist) {
                 continue;
             }
 
             // Acquire keypoints in the cell where the reprojected 3D points exist
             const auto pred_scale_level = lm->predict_scale_level(cam_to_lm_dist, keyfrm_2->orb_params_->num_levels_, keyfrm_2->orb_params_->log_scale_factor_);
+            // キーフレーム2の再投影位置に近い特徴点のインデックスを取得
+            // loop_detector.cc からの呼び出しでは、margin=7.5
             const auto indices = keyfrm_2->get_keypoints_in_cell(reproj(0), reproj(1), margin * keyfrm_2->orb_params_->scale_factors_.at(pred_scale_level));
 
             if (indices.empty()) {
@@ -519,6 +582,7 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
                 const auto scale_level = static_cast<unsigned int>(keyfrm_2->frm_obs_.undist_keypts_.at(idx_2).octave);
 
                 // TODO: should determine the scale with 'keyfrm-> get_keypts_in_cell ()'
+                // scale_level == pred_scale_level or scale_level == pred_scale_level-1 ならばスキップしない
                 if (scale_level < pred_scale_level - 1 || pred_scale_level < scale_level) {
                     continue;
                 }
@@ -527,12 +591,14 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
 
                 const auto hamm_dist = compute_descriptor_distance_32(lm_desc, desc);
 
+                // ハミング距離が最小のものを選択
                 if (hamm_dist < best_hamm_dist) {
                     best_hamm_dist = hamm_dist;
                     best_idx_2 = idx_2;
                 }
             }
 
+            // ハミング距離が HAMMING_DIST_THR_HIGH(=100) 以下ならば、キーフレーム1のランドマークに対してキーフレーム2の特徴点がマッチしているとみなす
             if (best_hamm_dist <= HAMMING_DIST_THR_HIGH) {
                 matched_indices_2_in_keyfrm_1.at(idx_1) = best_idx_2;
             }
@@ -544,6 +610,7 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
     // (world origin -- SE3 -> keyframe2 -- Sim3 --> keyframe1)
     // s_rot_12 * (rot_2w * pos_w + trans_2w) + trans_12
     // = s_rot_12 * rot_2w * pos_w + s_rot_12 * trans_2w + trans_12
+    // キーフレームを逆にして↑と同様の処理を行う
     {
         const Mat33_t s_rot_12w = s_rot_12 * rot_2w;
         const Vec3_t trans_12w = s_rot_12 * trans_2w + trans_12;
@@ -556,20 +623,24 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
                 continue;
             }
 
+            // 既に対応が取れているランドマークはスキップ
             if (is_already_matched_in_keyfrm_2.at(idx_2)) {
                 continue;
             }
 
             // 3D point coordinates with the global reference
             const Vec3_t pos_w = lm->get_pos_in_world();
+            // フレーム1のカメラ座標系での3D点の座標
             const Vec3_t pos_1 = s_rot_12w * pos_w + trans_12w;
 
             // Reproject and compute visibility
             Vec2_t reproj;
             float x_right;
+            // キーフレーム1での再投影位置
             const bool in_image = keyfrm_2->camera_->reproject_to_image(s_rot_12w, trans_12w, pos_w, reproj, x_right);
 
             // Ignore if it is reprojected outside the image
+            // equirectangular の場合は常に in_image = true
             if (!in_image) {
                 continue;
             }
@@ -581,6 +652,7 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
             const auto max_cam_to_lm_dist = margin_far * lm->get_max_valid_distance();
             const auto min_cam_to_lm_dist = margin_near * lm->get_min_valid_distance();
 
+            // 適切な範囲内であるかを確認
             if (cam_to_lm_dist < min_cam_to_lm_dist || max_cam_to_lm_dist < cam_to_lm_dist) {
                 continue;
             }
@@ -588,6 +660,8 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
             // Acquire keypoints in the cell where the reprojected 3D points exist
             const auto pred_scale_level = lm->predict_scale_level(cam_to_lm_dist, keyfrm_1->orb_params_->num_levels_, keyfrm_1->orb_params_->log_scale_factor_);
 
+            // キーフレーム1の再投影位置に近い特徴点のインデックスを取得
+            // loop_detector.cc からの呼び出しでは、margin=7.5
             const auto indices = keyfrm_1->get_keypoints_in_cell(reproj(0), reproj(1), margin * keyfrm_1->orb_params_->scale_factors_.at(pred_scale_level));
 
             if (indices.empty()) {
@@ -604,6 +678,7 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
                 const auto scale_level = static_cast<unsigned int>(keyfrm_1->frm_obs_.undist_keypts_.at(idx_1).octave);
 
                 // TODO: should determine the scale with 'keyfrm-> get_keypts_in_cell ()'
+                // scale_level == pred_scale_level or scale_level == pred_scale_level-1 ならばスキップしない
                 if (scale_level < pred_scale_level - 1 || pred_scale_level < scale_level) {
                     continue;
                 }
@@ -612,12 +687,14 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
 
                 const auto hamm_dist = compute_descriptor_distance_32(lm_desc, desc);
 
+                // ハミング距離が最小のものを選択
                 if (hamm_dist < best_hamm_dist) {
                     best_hamm_dist = hamm_dist;
                     best_idx_1 = idx_1;
                 }
             }
 
+            // ハミング距離が HAMMING_DIST_THR_HIGH(=100) 以下ならば、キーフレーム2のランドマークに対してキーフレーム1の特徴点がマッチしているとみなす
             if (best_hamm_dist <= HAMMING_DIST_THR_HIGH) {
                 matched_indices_1_in_keyfrm_2.at(idx_2) = best_idx_1;
             }
@@ -626,6 +703,7 @@ unsigned int projection::match_keyframes_mutually(const std::shared_ptr<data::ke
 
     // Record only the cross-matches
     unsigned int num_matches = 0;
+    // フレーム間で互いに双方向から対応が取れているランドマークを記録、カウント
     for (unsigned int i = 0; i < landmarks_1.size(); ++i) {
         const auto idx_2 = matched_indices_2_in_keyfrm_1.at(i);
         if (idx_2 < 0) {

@@ -38,10 +38,12 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
     // 1. Aggregate the local and fixed keyframes, and local landmarks
 
     // Correct the local keyframes of the current keyframe
+    // 共通するランドマークを持つキーフレームを取得
     std::unordered_map<unsigned int, std::shared_ptr<data::keyframe>> local_keyfrms;
     bool has_scale = false;
 
     local_keyfrms[curr_keyfrm->id_] = curr_keyfrm;
+    // デフォルトでは、curr_keyfrmとランドマークを15個以上共有しているキーフレームを取得
     const auto curr_covisibilities = curr_keyfrm->graph_node_->get_covisibilities();
     for (const auto& local_keyfrm : curr_covisibilities) {
         if (!local_keyfrm) {
@@ -53,6 +55,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
         if (local_keyfrm->graph_node_->is_spanning_root()) {
             continue;
         }
+        //  map_db->get_fixed_keyframe_id_threshold() は多分ずっと 0
         if (local_keyfrm->id_ < map_db->get_fixed_keyframe_id_threshold()) {
             continue;
         }
@@ -64,6 +67,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
     }
 
     // Correct landmarks seen in local keyframes
+    // local_keyfrms で観測されたランドマークを取得
     std::unordered_map<unsigned int, std::shared_ptr<data::landmark>> local_lms;
 
     for (const auto& local_keyfrm : local_keyfrms) {
@@ -105,6 +109,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
     }
 
     // Fixed keyframes: keyframes which observe local landmarks but which are NOT in local keyframes
+    // local_keyfrms に含まれていないが、local_lms を観測しているキーフレームを取得
     std::unordered_map<unsigned int, std::shared_ptr<data::keyframe>> fixed_keyfrms;
 
     for (const auto& local_lm : local_lms) {
@@ -172,6 +177,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
     std::unordered_map<unsigned int, std::shared_ptr<data::keyframe>> all_keyfrms;
 
     // Set the local keyframes to the optimizer
+    // curr_keyfrmに近いキーフレームの頂点を作成し、optimizerに追加
     for (const auto& id_local_keyfrm_pair : local_keyfrms) {
         const auto& local_keyfrm = id_local_keyfrm_pair.second;
 
@@ -181,6 +187,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
     }
 
     // Set the fixed keyframes to the optimizer
+    // local_keyfrms に含まれていないが、local_lms を観測しているキーフレームの頂点を作成し、固定の頂点としてoptimizerに追加
     for (const auto& id_fixed_keyfrm_pair : fixed_keyfrms) {
         const auto& fixed_keyfrm = id_fixed_keyfrm_pair.second;
 
@@ -290,11 +297,13 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
 
     // 5. Perform the first optimization
 
+    // force_stop_flag が true なら return
     if (force_stop_flag && *force_stop_flag) {
         return;
     }
 
     optimizer.initializeOptimization();
+    // デフォルトの最適化回数は5
     optimizer.optimize(num_first_iter_);
 
     // 6. Discard outliers, then perform the second optimization
@@ -315,7 +324,10 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
             }
 
             if (reproj_edge_wrap.is_monocular_) {
+                // equirectangular の場合reproj_edge_wrap.depth_is_positive() は常に true
+                // edge->chi2() は _error.dot(information()*_error) . information() は情報行列（エッジの不確かさの逆行列）?
                 if (chi_sq_2D < edge->chi2() || !reproj_edge_wrap.depth_is_positive()) {
+                    // エッジをアウトライアとしてマーク
                     reproj_edge_wrap.set_as_outlier();
                 }
             }
@@ -329,6 +341,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
         }
 
         optimizer.initializeOptimization();
+        // デフォルトの最適化回数は10
         optimizer.optimize(num_second_iter_);
     }
 
@@ -349,6 +362,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
 
         if (reproj_edge_wrap.is_monocular_) {
             if (chi_sq_2D < edge->chi2() || !reproj_edge_wrap.depth_is_positive()) {
+                // アウトライアとしたエッジのキーフレームとランドマークを記録
                 outlier_observations.emplace_back(std::make_pair(reproj_edge_wrap.shot_, reproj_edge_wrap.lm_));
             }
         }
@@ -364,6 +378,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
     {
         std::lock_guard<std::mutex> lock(data::map_database::mtx_database_);
 
+        // アウトライアとなったエッジのつながりを削除して、ランドマークの記述子などを更新
         for (const auto& outlier_obs : outlier_observations) {
             const auto& keyfrm = outlier_obs.first;
             const auto& lm = outlier_obs.second;
@@ -375,6 +390,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
             }
         }
 
+        // キーフレームのカメラポーズを更新
         for (const auto& id_local_keyfrm_pair : local_keyfrms) {
             const auto& local_keyfrm = id_local_keyfrm_pair.second;
 
@@ -382,6 +398,7 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
             local_keyfrm->set_pose_cw(keyfrm_vtx->estimate());
         }
 
+        // ランドマークの位置と有効距離などを更新
         for (const auto& id_local_lm_pair : local_lms) {
             const auto& local_lm = id_local_lm_pair.second;
             if (local_lm->will_be_erased()) {

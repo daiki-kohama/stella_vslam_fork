@@ -13,6 +13,7 @@ equirectangular::equirectangular(const std::string& name, const color_order_t& c
 
     img_bounds_ = compute_image_bounds();
 
+    // num_grid_cols_ = 64 and num_grid_rows_ = 48 are used in the original implementation 
     inv_cell_width_ = static_cast<double>(num_grid_cols_) / (img_bounds_.max_x_ - img_bounds_.min_x_);
     inv_cell_height_ = static_cast<double>(num_grid_rows_) / (img_bounds_.max_y_ - img_bounds_.min_y_);
 }

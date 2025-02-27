@@ -61,20 +61,31 @@ inline bool equirectangular_reproj_edge::write(std::ostream& os) const {
     return os.good();
 }
 
+// 誤差関数
 inline void equirectangular_reproj_edge::computeError() {
+    // keyfrm_vtx
     const auto v1 = static_cast<const shot_vertex*>(_vertices.at(1));
+    // lm_vtx
     const auto v2 = static_cast<const landmark_vertex*>(_vertices.at(0));
     const Vec2_t obs(_measurement);
+    // 3次元点をカメラ座標系に変換して画像座標系に投影して誤差を計算
     _error = obs - cam_project(v1->estimate().map(v2->estimate()));
 }
 
+// ヤコビアンの計算
 inline void equirectangular_reproj_edge::linearizeOplus() {
+    // keyfrm_vtx
     auto vj = static_cast<shot_vertex*>(_vertices.at(1));
+    // キーフレームのカメラポーズ
     const g2o::SE3Quat& cam_pose_cw = vj->shot_vertex::estimate();
+    // キーフレームの回転行列
     const Mat33_t rot_cw = cam_pose_cw.rotation().toRotationMatrix();
 
+    // lm_vtx
     auto vi = static_cast<landmark_vertex*>(_vertices.at(0));
+    // ランドマークの3次元点の位置
     const Vec3_t& pos_w = vi->landmark_vertex::estimate();
+    // 3次元点をカメラ座標系に変換
     const Vec3_t pos_c = cam_pose_cw.map(pos_w);
 
     const auto pcx = pos_c(0);
@@ -111,6 +122,7 @@ inline void equirectangular_reproj_edge::linearizeOplus() {
         d_pc_d_pwx(2), d_pc_d_pwy(2), d_pc_d_pwz(2);
 
     // 導関数ベクトル d_L_d_x を作成
+    // d_L_d_pc と d_pc_d_x の合成微分(計算自体は内積)
     const VecR_t<9> d_L_d_x = (1.0 / L) * (pcx * d_pcx_d_x + pcy * d_pcy_d_x + pcz * d_pcz_d_x);
 
     // ヤコビ行列を作成
@@ -122,8 +134,10 @@ inline void equirectangular_reproj_edge::linearizeOplus() {
 
     // g2oの変数にセット
     // 3次元点に対する微分
+    // pwx, pwy, pwz に対する微分
     _jacobianOplusXi = jacobian.block<2, 3>(0, 6);
     // 姿勢に対する微分
+    // rx, ry, rz, tx, ty, tz に対する微分
     _jacobianOplusXj = jacobian.block<2, 6>(0, 0);
 }
 

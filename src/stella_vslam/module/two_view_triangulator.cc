@@ -47,6 +47,9 @@ bool two_view_triangulator::triangulate(const unsigned idx_1, const unsigned int
     // threshold of minimum angle of the two rays
     const bool triangulate_with_two_cameras =
         // check if the sufficient parallax is provided
+        // mapping_moduleのtriangulate_with_two_keyframesの場合、cos_rays_parallax_thr_は1°に相当
+        // 方向ベクトルのなす角が負の場合(90°以上)はスルー -> ランドマークがカメラに近い場合
+        // 方向ベクトルのなす角がcos_rays_parallax_thr_以上の場合はスルー -> ランドマークがカメラから遠い場合
         ((!is_stereo_1 && !is_stereo_2) && 0.0 < cos_rays_parallax && cos_rays_parallax < cos_rays_parallax_thr_)
         // check if the parallax between the two cameras is larger than the stereo parallax
         || ((is_stereo_1 || is_stereo_2) && 0.0 < cos_rays_parallax && cos_rays_parallax < cos_stereo_parallax);
@@ -66,6 +69,7 @@ bool two_view_triangulator::triangulate(const unsigned idx_1, const unsigned int
     }
 
     // check the triangulated point is located in front of the two cameras
+    // equirectangularの場合は、常にcheck_depth_is_positive = true
     if (!check_depth_is_positive(pos_w, rot_1w_, trans_1w_, camera_1_)
         || !check_depth_is_positive(pos_w, rot_2w_, trans_2w_, camera_2_)) {
         return false;
@@ -113,6 +117,9 @@ bool two_view_triangulator::check_reprojection_error(const Vec3_t& pos_w, const 
     }
     else {
         const Vec2_t reproj_err = reproj_in_cur - keypt;
+        // squaredNorm はそれぞれの要素の2乗の和
+        // sigma_sq は scale_factor_at_level**2
+        // 特徴点を検出した時の画像の解像度が低いほど閾値が大きくなっている -> 解像度に影響しないようにすべき?
         if ((chi_sq_2D * sigma_sq) < reproj_err.squaredNorm()) {
             return false;
         }

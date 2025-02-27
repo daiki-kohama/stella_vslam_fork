@@ -26,7 +26,10 @@ std::shared_ptr<data::keyframe> local_map_updater::get_nearest_covisibility() co
 bool local_map_updater::acquire_local_map(const std::vector<std::shared_ptr<data::landmark>>& frm_lms,
                                           const unsigned int num_keypts,
                                           unsigned int keyframe_id_threshold) {
+    // tracking_module.cc の update_local_map からの呼び出しでは keyframe_id_threshold は 0
+    // 共通のキーフレームを持ったり、その二次接続を持つキーフレームを最大 max_num_local_keyfrms_ まで取得して、 local_keyfrms_ に格納
     const auto local_keyfrms_was_found = find_local_keyframes(frm_lms, num_keypts, keyframe_id_threshold);
+    // local_keyfrms_ に格納されたキーフレームのランドマークで、フレームが観測していないランドマークを local_lms_ に格納
     const auto local_lms_was_found = find_local_landmarks(frm_lms, num_keypts);
     return local_keyfrms_was_found && local_lms_was_found;
 }
@@ -34,15 +37,19 @@ bool local_map_updater::acquire_local_map(const std::vector<std::shared_ptr<data
 bool local_map_updater::find_local_keyframes(const std::vector<std::shared_ptr<data::landmark>>& frm_lms,
                                              const unsigned int num_keypts,
                                              unsigned int keyframe_id_threshold) {
+    // キーフレームごとのフレームと共有しているランドマークの数を取得
     const auto keyfrm_to_num_shared_lms = count_num_shared_lms(frm_lms, num_keypts, keyframe_id_threshold);
     if (keyfrm_to_num_shared_lms.empty()) {
         SPDLOG_TRACE("find_local_keyframes: empty");
         return false;
     }
     std::unordered_set<unsigned int> already_found_keyfrm_ids;
+    // 最も共通するランドマーク数が多いキーフレームを記録し、一次接続(共通するランドマークを持つキーフレーム)を取得
     const auto first_local_keyfrms = find_first_local_keyframes(keyfrm_to_num_shared_lms, already_found_keyfrm_ids);
+    // 一次接続と二次接続(一次接続の共視キーフレーム1つ、子ノード1つ、親ノード1つ)合わせて、 max_num_local_keyfrms_ 以下を満たすように、二次接続のキーフレームを取得
     const auto second_local_keyfrms = find_second_local_keyframes(first_local_keyfrms, already_found_keyfrm_ids);
     local_keyfrms_ = first_local_keyfrms;
+    // second_local_keyfrms を local_keyfrms_ の後ろに追加
     std::copy(second_local_keyfrms.begin(), second_local_keyfrms.end(), std::back_inserter(local_keyfrms_));
     return true;
 }
@@ -64,6 +71,7 @@ local_map_updater::keyframe_to_num_shared_lms_t local_map_updater::count_num_sha
         const auto observations = lm->get_observations();
         for (auto obs : observations) {
             auto keyfrm = obs.first.lock();
+            // tracking_module.cc の update_local_map からの呼び出しでは keyframe_id_threshold は 0 なので、常に false
             if (keyframe_id_threshold > 0 && keyfrm->id_ >= keyframe_id_threshold) {
                 continue;
             }
@@ -96,6 +104,7 @@ auto local_map_updater::find_first_local_keyframes(const keyframe_to_num_shared_
         // update the nearest keyframe
         if (max_num_shared_lms < num_shared_lms) {
             max_num_shared_lms = num_shared_lms;
+            // 最も共通するランドマーク数が多いキーフレーム
             nearest_covisibility_ = keyfrm;
         }
     }
@@ -126,13 +135,17 @@ auto local_map_updater::find_second_local_keyframes(const std::vector<std::share
         return true;
     };
     for (auto iter = first_local_keyframes.cbegin(); iter != first_local_keyframes.cend(); ++iter) {
+        // tracking_module.cc の update_local_map からの呼び出しでは max_num_local_keyfrms_ はデフォルトで 60
         if (max_num_local_keyfrms_ < first_local_keyframes.size() + second_local_keyfrms.size()) {
+            // max_num_local_keyfrms_ よりも多くのキーフレームが見つかった場合、それ以上追加しない
+            // first_local_keyframes が共通するランドマークの多い順とかになっていないので、 second_local_keyfrms に追加される際に接続のより小さいものが入るケースあり
             break;
         }
 
         const auto& keyfrm = *iter;
 
         // covisibilities of the neighbor keyframe
+        // キーフレームの上位10個の共視キーフレームから1つだけ追加
         const auto neighbors = keyfrm->graph_node_->get_top_n_covisibilities(10);
         for (const auto& neighbor : neighbors) {
             if (add_second_local_keyframe(neighbor)) {
@@ -141,6 +154,7 @@ auto local_map_updater::find_second_local_keyframes(const std::vector<std::share
         }
 
         // children of the spanning tree
+        // キーフレームの子ノードから1つだけ追加
         const auto spanning_children = keyfrm->graph_node_->get_spanning_children();
         for (const auto& child : spanning_children) {
             if (add_second_local_keyframe(child)) {
@@ -149,6 +163,7 @@ auto local_map_updater::find_second_local_keyframes(const std::vector<std::share
         }
 
         // parent of the spanning tree
+        // キーフレームの親ノードを追加
         const auto& parent = keyfrm->graph_node_->get_spanning_parent();
         add_second_local_keyframe(parent);
     }
@@ -189,6 +204,7 @@ bool local_map_updater::find_local_landmarks(const std::vector<std::shared_ptr<d
             }
             already_found_lms_ids.insert(lm->id_);
 
+            // フレームで観測されていないかつ、 local_keyframes_ に含まれるキーフレームで観測されているランドマークを local_lms_ に追加
             local_lms_.push_back(lm);
         }
     }

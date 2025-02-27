@@ -60,6 +60,7 @@ std::vector<std::shared_ptr<keyframe>> bow_database::acquire_keyframes(const bow
     // Step 1.
     // Count up the number of nodes, words which are shared with query_keyframe, for all the keyframes in DoW database
 
+    // 全てのキーフレームで bow_vec と共通する単語の数をカウント
     const auto num_common_words = compute_num_common_words(bow_vec, keyfrms_to_reject);
     if (num_common_words.empty()) {
         return std::vector<std::shared_ptr<keyframe>>();
@@ -68,12 +69,14 @@ std::vector<std::shared_ptr<keyframe>> bow_database::acquire_keyframes(const bow
     // Set min_num_common_words_thr as 80 percentile of max_num_common_words
     // for the following selection of candidate keyframes.
     // (Delete frames from candidates if it has less shared words than 80% of the max_num_common_words)
+    // bow_vec と共通する単語の数の最大値
     unsigned int max_num_common_words = 0;
     for (const auto& keyfrm_num_common_words_pair : num_common_words) {
         if (max_num_common_words < keyfrm_num_common_words_pair.second) {
             max_num_common_words = keyfrm_num_common_words_pair.second;
         }
     }
+    // bow_vec と共通する単語の数の最大値の80%を min_num_common_words_thr とする
     const auto min_num_common_words_thr = static_cast<unsigned int>(0.8f * max_num_common_words);
 
     // Step 2.
@@ -81,11 +84,13 @@ std::vector<std::shared_ptr<keyframe>> bow_database::acquire_keyframes(const bow
     // by calculating similarity score between each candidate and the query keyframe.
 
     float best_score = min_score;
+    // bow_vec と共通する単語の数が min_num_common_words_thr より多いキーフレームに対して類似度スコアを計算
     const auto scores = compute_scores(num_common_words, bow_vec, min_num_common_words_thr, min_score, best_score);
     if (scores.empty()) {
         return std::vector<std::shared_ptr<keyframe>>();
     }
 
+    // scores に含まれるキーフレームを final_candidates に格納
     std::unordered_set<std::shared_ptr<keyframe>> final_candidates;
     for (const auto& keyfrm_score : scores) {
         const auto keyfrm = keyfrm_score.first;
@@ -105,14 +110,18 @@ bow_database::compute_num_common_words(const bow_vector& bow_vec,
     for (const auto& node_id_and_weight : bow_vec) {
         // first: node ID, second: weight
         // If not in the BoW database, continue
+        // keyfrms_in_node_ は node ID (BoWの単語) とその単語をBoWベクトルとして含むキーフレームのリストを持つ
+        // node_id を持つキーフレームがない場合はスキップ
         if (!static_cast<bool>(keyfrms_in_node_.count(node_id_and_weight.first))) {
             continue;
         }
         // Get a keyframe which shares the word (node ID) with the query
+        // node_id を持つキーフレームのリストを取得
         const auto& keyfrms_in_node = keyfrms_in_node_.at(node_id_and_weight.first);
         // For each keyframe, increase shared word number one by one
         for (const auto& keyfrm_in_node : keyfrms_in_node) {
             // If far enough from the query keyframe, store it as the initial loop candidates
+            // keyfrms_to_reject に含まれていないキーフレームのみをカウント
             if (!static_cast<bool>(keyfrms_to_reject.count(keyfrm_in_node))) {
                 // Initialize if not in num_common_words
                 if (!static_cast<bool>(num_common_words.count(keyfrm_in_node))) {
@@ -139,6 +148,7 @@ bow_database::compute_scores(const std::unordered_map<std::shared_ptr<keyframe>,
 
     for (const auto& keyfrm_num_common_words_pair : num_common_words) {
         const auto& keyfrm = keyfrm_num_common_words_pair.first;
+        // min_num_common_words_thr より多くの共通のBoW単語を持つキーフレームに対してのみ類似度スコアを計算
         if (min_num_common_words_thr < keyfrm_num_common_words_pair.second) {
             // Calculate similarity score with query keyframe
             // for the keyframes which have more shared words than minimum common words
