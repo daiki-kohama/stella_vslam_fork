@@ -1,0 +1,21 @@
+services:
+  stella_vslam:
+    build:
+      context: .
+      dockerfile: Dockerfile.desktop
+      args:
+        - "NUM_THREADS=${DOCKER_BUILD_NUM_THREADS}"
+    image: "stella_vslam-desktop"
+    container_name: "${DOCKER_CONTAINER_NAME}"
+    environment:
+      DISPLAY: "host.docker.internal:0"
+    volumes:
+      - "${MEDIA_PATH}:/media"
+      - "${VOCAB_PATH}:/vocab:ro"
+      - "${CONFIGS_PATH}:/configs"
+      - ".:/stella_vslam_ws"
+      - "./build_in_docker.sh:/stella_vslam_examples/build/build_in_docker.sh"
+      - "/tmp/.X11-unix:/tmp/.X11-unix:ro"
+    entrypoint: "sh -c './build_in_docker.sh && exec /bin/bash'"
+    stdin_open: true
+    tty: true
