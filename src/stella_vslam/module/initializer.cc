@@ -148,8 +148,12 @@ void initializer::create_initializer(data::frame& curr_frm) {
 bool initializer::try_initialize_for_monocular(data::frame& curr_frm) {
     assert(state_ == initializer_state_t::Initializing);
 
+    int keypt_margin = 100;
+    if (init_frm_.camera_->model_type_ == camera::model_type_t::Equirectangular) {
+        keypt_margin = static_cast<int>(init_frm_.camera_->rows_ * 0.2);
+    }
     match::area matcher(0.9, true);
-    const auto num_matches = matcher.match_in_consistent_area(init_frm_, curr_frm, prev_matched_coords_, init_matches_, 100);
+    const auto num_matches = matcher.match_in_consistent_area(init_frm_, curr_frm, prev_matched_coords_, init_matches_, keypt_margin);
 
     if (num_matches < min_num_valid_pts_) {
         // rebuild the initializer with the next frame
