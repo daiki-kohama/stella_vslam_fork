@@ -152,7 +152,7 @@ bool initializer::try_initialize_for_monocular(data::frame& curr_frm) {
     if (init_frm_.camera_->model_type_ == camera::model_type_t::Equirectangular) {
         keypt_margin = static_cast<int>(init_frm_.camera_->rows_ * 0.2);
     }
-    match::area matcher(0.9, true);
+    match::area matcher(0.9, init_frm_.camera_->model_type_ != camera::model_type_t::Equirectangular);
     const auto num_matches = matcher.match_in_consistent_area(init_frm_, curr_frm, prev_matched_coords_, init_matches_, keypt_margin);
 
     if (num_matches < min_num_valid_pts_) {

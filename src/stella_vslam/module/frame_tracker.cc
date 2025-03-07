@@ -18,7 +18,7 @@ frame_tracker::frame_tracker(camera::base* camera, const std::shared_ptr<optimiz
     : camera_(camera), num_matches_thr_(num_matches_thr), use_fixed_seed_(use_fixed_seed), margin_(margin), pose_optimizer_(pose_optimizer) {}
 
 bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame& last_frm, const Mat44_t& velocity) const {
-    match::projection projection_matcher(0.9, true);
+    match::projection projection_matcher(0.9, camera_->model_type_ != camera::model_type_t::Equirectangular);
 
     // Set the initial pose by using the motion model
     curr_frm.set_pose_cw(velocity * last_frm.get_pose_cw());
@@ -59,7 +59,7 @@ bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame&
 }
 
 bool frame_tracker::bow_match_based_track(data::frame& curr_frm, const data::frame& last_frm, const std::shared_ptr<data::keyframe>& ref_keyfrm) const {
-    match::bow_tree bow_matcher(0.7, true);
+    match::bow_tree bow_matcher(0.7, camera_->model_type_ != camera::model_type_t::Equirectangular);
 
     // Search 2D-2D matches between the ref keyframes and the current frame
     // to acquire 2D-3D matches between the frame keypoints and 3D points observed in the ref keyframe
