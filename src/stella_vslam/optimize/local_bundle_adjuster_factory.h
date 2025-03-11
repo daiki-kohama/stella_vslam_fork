@@ -5,6 +5,7 @@
 #ifdef USE_GTSAM
 #include "stella_vslam/optimize/local_bundle_adjuster_gtsam.h"
 #endif // USE_GTSAM
+#include "stella_vslam/util/yaml.h"
 
 #include <memory>
 
@@ -17,7 +18,11 @@ public:
     static std::unique_ptr<local_bundle_adjuster> create(const YAML::Node& yaml_node) {
         const auto& backend = yaml_node["backend"].as<std::string>("g2o");
         if (backend == "g2o") {
-            return std::unique_ptr<local_bundle_adjuster>(new local_bundle_adjuster_g2o(yaml_node));
+            YAML::Node g2o_node = util::yaml_optional_ref(yaml_node, "g2o");
+            return std::unique_ptr<local_bundle_adjuster>(new local_bundle_adjuster_g2o(
+                yaml_node,
+                g2o_node["num_first_iter"].as<unsigned int>(5),
+                g2o_node["num_second_iter"].as<unsigned int>(10)));
         }
         else if (backend == "gtsam") {
 #ifdef USE_GTSAM
