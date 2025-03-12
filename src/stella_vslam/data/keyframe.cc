@@ -111,7 +111,7 @@ keyframe::keyframe(unsigned int id, const frame& frm)
     // set pose parameters (pose_wc_, trans_wc_) using frm.pose_cw_
     set_pose_cw(frm.get_pose_cw());
 
-    spdlog::info("keyfrm_id: {} src_frm_id : {} video_time: {}", id_, src_frm_id_, src_frm_id_ / frm.camera_->fps_);
+    spdlog::info("keyfrm_id: {}  src_frm_id: {}  video_time: {}", id_, src_frm_id_, src_frm_id_ / frm.camera_->fps_);
 }
 
 keyframe::keyframe(const unsigned int id, const unsigned int src_frm_id, const double timestamp,
@@ -128,7 +128,7 @@ keyframe::keyframe(const unsigned int id, const unsigned int src_frm_id, const d
     // set pose parameters (pose_wc_, trans_wc_) using pose_cw_
     set_pose_cw(pose_cw);
 
-    spdlog::info("keyfrm_id: {} src_frm_id : {} video_time: {}", id_, src_frm_id_, src_frm_id_ / camera->fps_);
+    spdlog::info("keyfrm_id: {}  src_frm_id: {}  video_time: {}", id_, src_frm_id_, src_frm_id_ / camera->fps_);
 
     // The following process needs to take place:
     //   should set the pointers of landmarks_ using add_landmark()
