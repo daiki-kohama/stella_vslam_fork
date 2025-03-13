@@ -6,6 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
+#include <nlohmann/json_fwd.hpp>
 
 namespace stella_vslam {
 namespace data {
@@ -74,6 +75,12 @@ public:
      * @return
      */
     std::map<unsigned int, bool> get_lost_frames() const;
+
+    /**
+     * Dump frames as JSON
+     * @return
+     */
+    nlohmann::json to_json() const;
 
     /**
      * Clear frame statistics

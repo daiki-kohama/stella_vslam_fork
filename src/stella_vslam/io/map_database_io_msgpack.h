@@ -21,7 +21,8 @@ public:
     /**
      * Constructor
      */
-    map_database_io_msgpack() = default;
+    map_database_io_msgpack(const bool save_frames = false)
+        : save_frames_(save_frames) {}
 
     /**
      * Destructor
@@ -45,6 +46,9 @@ public:
               data::map_database* map_db,
               data::bow_database* bow_db,
               data::bow_vocabulary* bow_vocab) override;
+
+private:
+    const bool save_frames_;
 };
 
 } // namespace io

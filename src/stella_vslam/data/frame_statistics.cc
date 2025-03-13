@@ -1,6 +1,10 @@
+#include "stella_vslam/data/common.h"
 #include "stella_vslam/data/frame.h"
 #include "stella_vslam/data/keyframe.h"
 #include "stella_vslam/data/frame_statistics.h"
+
+#include <spdlog/spdlog.h>
+#include <nlohmann/json.hpp>
 
 namespace stella_vslam {
 namespace data {
@@ -85,6 +89,55 @@ std::map<unsigned int, double> frame_statistics::get_timestamps() const {
 
 std::map<unsigned int, bool> frame_statistics::get_lost_frames() const {
     return {is_lost_frms_.begin(), is_lost_frms_.end()};
+}
+
+nlohmann::json frame_statistics::to_json() const {
+    spdlog::info("encoding {} frame(s) to store", num_valid_frms_);
+    std::map<std::string, nlohmann::json> frames;
+
+    if (num_valid_frms_ == 0) {
+        spdlog::warn("there are no valid frames, cannot dump frames");
+        return frames;
+    }
+
+    const auto rk_itr_bgn = ref_keyfrms_.begin();
+    const auto rc_itr_bgn = rel_cam_poses_from_ref_keyfrms_.begin();
+    const auto rk_itr_end = ref_keyfrms_.end();
+    const auto rc_itr_end = rel_cam_poses_from_ref_keyfrms_.end();
+    auto rk_itr = rk_itr_bgn;
+    auto rc_itr = rc_itr_bgn;
+
+    int offset = rk_itr->first;
+    unsigned int prev_frm_id = 0;
+    for (unsigned int i = 0; i < num_valid_frms_; ++i, ++rk_itr, ++rc_itr) {
+        // check frame ID
+        assert(rk_itr->first == rc_itr->first);
+        const auto frm_id = rk_itr->first;
+
+        // check if the frame was lost or not
+        if (is_lost_frms_.at(frm_id)) {
+            spdlog::warn("frame {} was lost", frm_id);
+            continue;
+        }
+
+        auto ref_keyfrm = rk_itr->second;
+        const Mat44_t cam_pose_rw = ref_keyfrm->get_pose_cw();
+        const Mat44_t rel_cam_pose_cr = rc_itr->second;
+
+        const Mat44_t cam_pose_cw = rel_cam_pose_cr * cam_pose_rw;
+        Mat44_t cam_pose_wc = util::converter::inverse_pose(cam_pose_cw);
+
+        frames[std::to_string(frm_id)] = {
+            {"ref_keyfrm_id", ref_keyfrm->id_},
+            {"rot_cw", convert_rotation_to_json(cam_pose_cw.block<3, 3>(0, 0))},
+            {"trans_cw", convert_translation_to_json(cam_pose_cw.block<3, 1>(0, 3))}};
+    }
+
+    if (rk_itr != rk_itr_end || rc_itr != rc_itr_end) {
+        spdlog::error("the sizes of frame statistics are not matched");
+    }
+
+    return frames;
 }
 
 void frame_statistics::clear() {

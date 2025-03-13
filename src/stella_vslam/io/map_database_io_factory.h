@@ -20,13 +20,15 @@ namespace io {
 
 class map_database_io_factory {
 public:
-    static std::shared_ptr<map_database_io_base> create(const std::string& map_format) {
+    static std::shared_ptr<map_database_io_base> create(const YAML::Node& node) {
+        const auto map_format = node["map_format"].as<std::string>("msgpack");
         std::shared_ptr<map_database_io_base> map_database_io;
         if (map_format == "sqlite3") {
             map_database_io = std::make_shared<io::map_database_io_sqlite3>();
         }
         else if (map_format == "msgpack") {
-            map_database_io = std::make_shared<io::map_database_io_msgpack>();
+            const auto save_frames = node["save_frames"].as<bool>(false);
+            map_database_io = std::make_shared<io::map_database_io_msgpack>(save_frames);
         }
         else {
             throw std::runtime_error("Invalid map format: " + map_format);
