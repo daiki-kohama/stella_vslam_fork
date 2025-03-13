@@ -70,8 +70,7 @@ system::system(const std::shared_ptr<config>& cfg, const std::string& vocab_file
     map_publisher_ = std::shared_ptr<publish::map_publisher>(new publish::map_publisher(cfg_, map_db_));
 
     // map I/O
-    auto map_format = system_params["map_format"].as<std::string>("msgpack");
-    map_database_io_ = io::map_database_io_factory::create(map_format);
+    map_database_io_ = io::map_database_io_factory::create(system_params);
 
     // tracking module
     tracker_ = new tracking_module(cfg_, camera_, map_db_, bow_vocab_, bow_db_);
