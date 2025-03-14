@@ -35,6 +35,12 @@ bool map_database_io_msgpack::save(const std::string& path,
                         {"keyframe_next_id", static_cast<unsigned int>(map_db->next_keyframe_id_)},
                         {"landmark_next_id", static_cast<unsigned int>(map_db->next_landmark_id_)}};
 
+    if (save_frames_) {
+        const auto frm_stats = map_db->get_frame_statistics();
+        const auto frames = frm_stats.to_json();
+        json["frames"] = frames;
+    }
+
     std::ofstream ofs(path, std::ios::out | std::ios::binary);
 
     if (ofs.is_open()) {
