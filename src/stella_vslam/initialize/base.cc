@@ -2,6 +2,8 @@
 #include "stella_vslam/initialize/base.h"
 #include "stella_vslam/solve/triangulator.h"
 
+#include <spdlog/spdlog.h>
+
 namespace stella_vslam {
 namespace initialize {
 
@@ -63,6 +65,7 @@ bool base::find_most_plausible_pose(const eigen_alloc_vector<Mat33_t>& init_rots
 
     // reject if the number of valid points does not fulfill the threshold
     if (*max_num_valid_pts_iter < min_num_valid_pts_) {
+        spdlog::debug("failed with the number of valid points (max: {})", *max_num_valid_pts_iter);
         return false;
     }
 
@@ -72,16 +75,19 @@ bool base::find_most_plausible_pose(const eigen_alloc_vector<Mat33_t>& init_rots
                                                 return 0.8 * (*max_num_valid_pts_iter) < num_valid_pts;
                                             });
     if (1 < num_similars) {
+        spdlog::debug("failed with the number of similar hypotheses");
         return false;
     }
 
     // reject if the parallax is too small
     if (init_parallax.at(max_num_valid_index) > std::cos(parallax_deg_thr_ / 180.0 * M_PI)) {
+        spdlog::debug("failed with the parallax");
         return false;
     }
 
     // reject if the number of 3D points does not fulfill the threshold
     if (num_triangulated_pts.at(max_num_valid_index) < min_num_triangulated_) {
+        spdlog::debug("failed with the number of triangulated points");
         return false;
     }
 

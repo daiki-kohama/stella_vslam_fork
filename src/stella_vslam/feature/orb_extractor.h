@@ -57,8 +57,8 @@ public:
     virtual ~orb_extractor() = default;
 
     //! Extract keypoints and each descriptor of them
-    void extract(const cv::_InputArray& in_image, const cv::_InputArray& in_image_mask,
-                 std::vector<cv::KeyPoint>& keypts, const cv::_OutputArray& out_descriptors);
+    virtual void extract(const cv::_InputArray& in_image, const cv::_InputArray& in_image_mask,
+                         std::vector<cv::KeyPoint>& keypts, const cv::_OutputArray& out_descriptors);
 
     //! parameters for ORB extraction
     const orb_params* orb_params_;
@@ -70,26 +70,14 @@ public:
     //! Image pyramid
     std::vector<cv::Mat> image_pyramid_;
 
-private:
-    //! Calculate scale factors and sigmas
-    void calc_scale_factors();
-
+protected:
     //! Create a mask matrix that constructed by rectangles
     void create_rectangle_mask(const unsigned int cols, const unsigned int rows);
-
-    //! Compute image pyramid
-    void compute_image_pyramid(const cv::Mat& image);
-
-    //! Compute fast keypoints for cells in each image pyramid
-    void compute_fast_keypoints(std::vector<std::vector<cv::KeyPoint>>& all_keypts, const cv::Mat& mask) const;
 
     //! Pick computed keypoints on the image uniformly
     std::vector<cv::KeyPoint> distribute_keypoints(const std::vector<cv::KeyPoint>& keypts_to_distribute,
                                                    const int min_x, const int max_x, const int min_y, const int max_y,
                                                    const float scale_factor) const;
-
-    //! Compute orientation for each keypoint
-    void compute_orientation(const cv::Mat& image, std::vector<cv::KeyPoint>& keypts) const;
 
     //! Correct keypoint's position to comply with the scale
     void correct_keypoint_scale(std::vector<cv::KeyPoint>& keypts_at_level, const unsigned int level) const;
@@ -99,9 +87,6 @@ private:
 
     //! Compute orb descriptor of a keypoint
     void compute_orb_descriptor(const cv::KeyPoint& keypt, const cv::Mat& image, uchar* desc) const;
-
-    //! Area of node occupied by one feature point
-    unsigned int min_area_sqrt_;
 
     //! size of maximum ORB patch radius
     static constexpr unsigned int orb_patch_radius_ = 19;
@@ -114,6 +99,23 @@ private:
 
     //! feature descriptor implementations
     orb_impl orb_impl_;
+
+private:
+    //! Calculate scale factors and sigmas
+    void calc_scale_factors();
+
+    //! Compute image pyramid
+    void compute_image_pyramid(const cv::Mat& image);
+
+    //! Compute fast keypoints for cells in each image pyramid
+    void compute_fast_keypoints(std::vector<std::vector<cv::KeyPoint>>& all_keypts, const cv::Mat& mask) const;
+
+    //! Compute orientation for each keypoint
+    void compute_orientation(const cv::Mat& image, std::vector<cv::KeyPoint>& keypts) const;
+
+    //! Area of node occupied by one feature point
+    unsigned int min_area_sqrt_;
+
 #ifdef USE_CUDA_EFFICIENT_DESCRIPTORS
     cv::Ptr<cv::cuda::HashSIFT> hash_sift_;
 #endif

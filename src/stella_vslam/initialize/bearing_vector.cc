@@ -50,6 +50,7 @@ bool bearing_vector::initialize(const data::frame& cur_frm, const std::vector<in
         return reconstruct_with_E(E_ref_to_cur, is_inlier_match);
     }
     else {
+        spdlog::debug("failed with essential_solver");
         return false;
     }
 }
@@ -61,6 +62,7 @@ bool bearing_vector::reconstruct_with_E(const Mat33_t& E_ref_to_cur, const std::
     eigen_alloc_vector<Mat33_t> init_rots;
     eigen_alloc_vector<Vec3_t> init_transes;
     if (!solve::essential_solver::decompose(E_ref_to_cur, init_rots, init_transes)) {
+        spdlog::debug("failed to decompose E");
         return false;
     }
 
@@ -69,6 +71,7 @@ bool bearing_vector::reconstruct_with_E(const Mat33_t& E_ref_to_cur, const std::
 
     const auto pose_is_found = find_most_plausible_pose(init_rots, init_transes, is_inlier_match, false);
     if (!pose_is_found) {
+        spdlog::debug("failed to find the most plausible pose");
         return false;
     }
 

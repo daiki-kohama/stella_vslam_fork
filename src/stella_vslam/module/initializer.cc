@@ -155,6 +155,17 @@ bool initializer::try_initialize_for_monocular(data::frame& curr_frm) {
     match::area matcher(0.9, init_frm_.camera_->model_type_ != camera::model_type_t::Equirectangular);
     const auto num_matches = matcher.match_in_consistent_area(init_frm_, curr_frm, prev_matched_coords_, init_matches_, keypt_margin);
 
+    spdlog::debug("matched {} keypoints", num_matches);
+
+    // std::vector<std::pair<int, int>> ref_cur_matches(num_matches);
+    // for (unsigned int ref_idx = 0; ref_idx < init_matches_.size(); ++ref_idx) {
+    //     const auto cur_idx = init_matches_.at(ref_idx);
+    //     if (0 <= cur_idx) {
+    //         ref_cur_matches.emplace_back(std::make_pair(ref_idx, cur_idx));
+    //         std::cout << "[" << curr_frm.frm_obs_.undist_keypts_.at(cur_idx).pt.x << ", " << curr_frm.frm_obs_.undist_keypts_.at(cur_idx).pt.y << ", " << init_frm_.frm_obs_.undist_keypts_.at(ref_idx).pt.x << ", " << init_frm_.frm_obs_.undist_keypts_.at(ref_idx).pt.y << "]" << std::endl;
+    //     }
+    // }
+
     if (num_matches < min_num_valid_pts_) {
         // rebuild the initializer with the next frame
         reset();

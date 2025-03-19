@@ -20,7 +20,7 @@
 #include "stella_vslam/marker_detector/aruconano.h"
 #endif // USE_ARUCO_NANO
 #include "stella_vslam/match/stereo.h"
-#include "stella_vslam/feature/orb_extractor.h"
+#include "stella_vslam/feature/orb_extractor_factory.h"
 #include "stella_vslam/io/trajectory_io.h"
 #include "stella_vslam/io/map_database_io_factory.h"
 #include "stella_vslam/publish/map_publisher.h"
@@ -94,9 +94,9 @@ system::system(const std::shared_ptr<config>& cfg, const std::string& vocab_file
     const auto min_size = preprocessing_params["min_size"].as<unsigned int>(800);
     const auto desc_type_str = preprocessing_params["descriptor_type"].as<std::string>("ORB");
     const auto desc_type = feature::descriptor_type_from_string(desc_type_str);
-    extractor_left_ = new feature::orb_extractor(orb_params_, min_size, desc_type, mask_rectangles);
+    extractor_left_ = feature::orb_extractor_factory::create(orb_params_, min_size, camera_, desc_type, mask_rectangles);
     if (camera_->setup_type_ == camera::setup_type_t::Stereo) {
-        extractor_right_ = new feature::orb_extractor(orb_params_, min_size, desc_type, mask_rectangles);
+        extractor_right_ = feature::orb_extractor_factory::create(orb_params_, min_size, camera_, desc_type, mask_rectangles);
     }
 
     num_grid_cols_ = preprocessing_params["num_grid_cols"].as<unsigned int>(64);
@@ -380,6 +380,7 @@ data::frame system::create_monocular_frame(const cv::Mat& img, const double time
     if (keypts_.empty()) {
         spdlog::warn("preprocess: cannot extract any keypoints");
     }
+    spdlog::debug("preprocess: extracted {} keypoints", keypts_.size());
 
     // Undistort keypoints
     camera_->undistort_keypoints(keypts_, frm_obs.undist_keypts_);
