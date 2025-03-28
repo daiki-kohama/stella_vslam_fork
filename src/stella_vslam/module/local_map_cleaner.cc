@@ -3,6 +3,8 @@
 #include "stella_vslam/data/map_database.h"
 #include "stella_vslam/module/local_map_cleaner.h"
 
+#include <spdlog/spdlog.h>
+
 namespace stella_vslam {
 namespace module {
 
@@ -98,6 +100,7 @@ unsigned int local_map_cleaner::remove_redundant_keyframes(const std::shared_ptr
         // if the redundant observation ratio of `covisibility` is larger than the threshold, it will be removed
         if (redundant_obs_ratio_thr_ <= static_cast<float>(num_redundant_obs) / num_valid_obs) {
             ++num_removed;
+            spdlog::debug("keyframe {} will be removed in local_map_cleaner", covisibility->id_);
             const auto cur_landmarks = covisibility->get_landmarks();
             covisibility->prepare_for_erasing(map_db_, bow_db_);
             for (const auto& lm : cur_landmarks) {

@@ -50,6 +50,16 @@ auto assign_keypoints_to_grid(const camera::base* camera, const std::vector<cv::
     -> std::vector<std::vector<std::vector<unsigned int>>>;
 
 /**
+ * Assign all LightGlue keypoints to cells to accelerate projection matching
+ * @param camera
+ * @param undist_keypts
+ * @return
+ */
+void assign_lg_keypoints_to_grid(const camera::base* camera, const std::vector<cv::Point2f>& lg_keypts,
+                                 std::vector<std::vector<std::vector<unsigned int>>>& keypt_indices_in_cells,
+                                 unsigned int num_grid_cols, unsigned int num_grid_rows);
+
+/**
  * Get x-y index of the cell in which the specified keypoint is assigned
  * @param camera
  * @param keypt
@@ -68,6 +78,24 @@ inline bool get_cell_indices(const camera::base* camera, const cv::KeyPoint& key
 }
 
 /**
+ * Get x-y index of the cell in which the specified LightGlue keypoint is assigned
+ * @param camera
+ * @param keypt
+ * @param cell_idx_x
+ * @param cell_idx_y
+ * @return
+ */
+inline bool get_cell_lg_indices(const camera::base* camera, const cv::Point2f& lg_keypt,
+                                const unsigned int num_grid_cols, const unsigned int num_grid_rows,
+                                const double inv_cell_width, const double inv_cell_height,
+                                int& cell_idx_x, int& cell_idx_y) {
+    cell_idx_x = cvFloor((lg_keypt.x - camera->img_bounds_.min_x_) * inv_cell_width);
+    cell_idx_y = cvFloor((lg_keypt.y - camera->img_bounds_.min_y_) * inv_cell_height);
+    return (0 <= cell_idx_x && cell_idx_x < static_cast<int>(num_grid_cols)
+            && 0 <= cell_idx_y && cell_idx_y < static_cast<int>(num_grid_rows));
+}
+
+/**
  * Get keypoint indices in cell(s) in which the specified point is located
  * @param camera
  * @param undist_keypts
@@ -79,7 +107,7 @@ inline bool get_cell_indices(const camera::base* camera, const cv::KeyPoint& key
  * @param max_level
  * @return
  */
-std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, const std::vector<cv::KeyPoint>& undist_keypts,
+std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, const std::vector<cv::Point2f>& undist_keypts,
                                                 const std::vector<std::vector<std::vector<unsigned int>>>& keypt_indices_in_cells,
                                                 const float ref_x, const float ref_y, const float margin,
                                                 const unsigned int num_grid_cols, const unsigned int num_grid_rows,

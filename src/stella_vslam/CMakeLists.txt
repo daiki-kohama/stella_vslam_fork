@@ -87,6 +87,15 @@ else()
     set(USE_CUDA_EFFICIENT_DESCRIPTORS OFF)
 endif()
 
+# LightGlue
+set(USE_LIGHTGLUE OFF CACHE BOOL "Enable LightGlue")
+
+if(USE_LIGHTGLUE)
+    set(Python3_EXECUTABLE "/LightGlue/venv/bin/python3.10")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+    find_package(pybind11 REQUIRED)
+endif()
+
 # ----- Create stella_vslam library -----
 add_library(${PROJECT_NAME}
     ${CMAKE_CURRENT_SOURCE_DIR}/config.h
@@ -257,7 +266,8 @@ target_link_libraries(${PROJECT_NAME}
     "$<$<BOOL:${USE_CUDA_EFFICIENT_DESCRIPTORS}>:${cuda_efficient_features_LIBRARY};opencv_cudafilters;opencv_cudawarping>"
     PRIVATE
     ${LAPACK_LIBRARIES}
-    "$<$<BOOL:${USE_CUDA_EFFICIENT_DESCRIPTORS}>:CUDA::cudart;CUDA::cublas>")
+    "$<$<BOOL:${USE_CUDA_EFFICIENT_DESCRIPTORS}>:CUDA::cudart;CUDA::cublas>"
+    "$<$<BOOL:${USE_LIGHTGLUE}>:pybind11::embed;Python3::Python>")
 
 # ----- Install configuration -----
 set(STELLA_VSLAM_INCLUDE_INSTALL_DIR ${INCLUDES_DESTINATION}/stella_vslam)

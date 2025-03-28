@@ -55,12 +55,12 @@ protected:
                                   const std::vector<bool>& is_inlier_match, const bool depth_is_positive);
 
     //! Generate 3D points from matches with valid and sufficient parallax
-    unsigned int triangulate(const Mat33_t& rot_ref_to_cur, const Vec3_t& trans_ref_to_cur,
-                             const std::vector<bool>& is_inlier_match, const bool depth_is_positive,
-                             eigen_alloc_vector<Vec3_t>& triangulated_pts,
-                             std::vector<bool>& is_triangulated,
-                             unsigned int& num_triangulated_pts,
-                             float& parallax_deg);
+    virtual unsigned int triangulate(const Mat33_t& rot_ref_to_cur, const Vec3_t& trans_ref_to_cur,
+                                     const std::vector<bool>& is_inlier_match, const bool depth_is_positive,
+                                     eigen_alloc_vector<Vec3_t>& triangulated_pts,
+                                     std::vector<bool>& is_triangulated,
+                                     unsigned int& num_triangulated_pts,
+                                     float& parallax_deg);
 
     //-----------------------------------------
     // reference frame information

@@ -41,7 +41,9 @@ RUN set -x && \
   apt-get install -y -qq \
     libyaml-cpp-dev \
     sqlite3 \
-    libsqlite3-dev && \
+    libsqlite3-dev \
+    python3.10-venv \
+    python3-pybind11 && \
   : "remove cache" && \
   apt-get autoremove -y -qq && \
   rm -rf /var/lib/apt/lists/*
@@ -180,6 +182,17 @@ RUN set -x && \
   rm -rf *
 ENV Pangolin_DIR=${CMAKE_INSTALL_PREFIX}/lib/cmake/Pangolin
 
+# LightGlue
+ARG LIGHTGLUE_COMMIT=250f95463439dd2f7606f126feccdb64f67bcd9c
+WORKDIR /
+RUN set -x && \
+  git clone https://github.com/daiki-kohama/LightGlue.git && \
+  cd LightGlue && \
+  git checkout ${LIGHTGLUE_COMMIT} && \
+  python3 -m venv venv && \
+  . venv/bin/activate && \
+  pip install -e .
+
 # backward-cpp
 ARG BACKWARD_CPP_COMMIT=5ffb2c879ebdbea3bdb8477c671e32b1c984beaa
 WORKDIR /tmp
@@ -206,6 +219,7 @@ RUN set -x && \
   cd build && \
   cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DUSE_LIGHTGLUE=ON \
     .. && \
   make -j${NUM_THREADS} && \
   make install && \

@@ -21,6 +21,7 @@
 #endif // USE_ARUCO_NANO
 #include "stella_vslam/match/stereo.h"
 #include "stella_vslam/feature/orb_extractor.h"
+#include "stella_vslam/feature/lightglue.h"
 #include "stella_vslam/io/trajectory_io.h"
 #include "stella_vslam/io/map_database_io_factory.h"
 #include "stella_vslam/publish/map_publisher.h"
@@ -28,6 +29,8 @@
 #include "stella_vslam/util/converter.h"
 #include "stella_vslam/util/image_converter.h"
 #include "stella_vslam/util/yaml.h"
+
+#include "stella_vslam/data/landmark.h"
 
 #include <thread>
 
@@ -72,15 +75,6 @@ system::system(const std::shared_ptr<config>& cfg, const std::string& vocab_file
     // map I/O
     map_database_io_ = io::map_database_io_factory::create(system_params);
 
-    // tracking module
-    tracker_ = new tracking_module(cfg_, camera_, map_db_, bow_vocab_, bow_db_);
-    // mapping module
-    mapper_ = new mapping_module(util::yaml_optional_ref(cfg->yaml_node_, "Mapping"), map_db_, bow_db_, bow_vocab_);
-    // global optimization module
-    if (bow_db_ && bow_vocab_) {
-        global_optimizer_ = new global_optimization_module(map_db_, bow_db_, bow_vocab_, cfg_->yaml_node_, camera_->setup_type_ != camera::setup_type_t::Monocular);
-    }
-
     // preprocessing modules
     const auto preprocessing_params = util::yaml_optional_ref(cfg->yaml_node_, "Preprocessing");
     if (camera_->setup_type_ == camera::setup_type_t::RGBD) {
@@ -90,6 +84,18 @@ system::system(const std::shared_ptr<config>& cfg, const std::string& vocab_file
         }
     }
     auto mask_rectangles = util::get_rectangles(preprocessing_params["mask_rectangles"]);
+
+    // LightGlue
+    lightglue_ = new feature::lightglue(mask_rectangles);
+
+    // tracking module
+    tracker_ = new tracking_module(cfg_, camera_, map_db_, bow_vocab_, bow_db_, lightglue_);
+    // mapping module
+    mapper_ = new mapping_module(util::yaml_optional_ref(cfg->yaml_node_, "Mapping"), map_db_, bow_db_, bow_vocab_, lightglue_);
+    // global optimization module
+    if (bow_db_ && bow_vocab_) {
+        global_optimizer_ = new global_optimization_module(map_db_, bow_db_, bow_vocab_, cfg_->yaml_node_, camera_->setup_type_ != camera::setup_type_t::Monocular);
+    }
 
     const auto min_size = preprocessing_params["min_size"].as<unsigned int>(800);
     const auto desc_type_str = preprocessing_params["descriptor_type"].as<std::string>("ORB");
@@ -163,6 +169,8 @@ system::~system() {
     extractor_left_ = nullptr;
     delete extractor_right_;
     extractor_right_ = nullptr;
+    delete lightglue_;
+    lightglue_ = nullptr;
 
     delete marker_detector_;
     marker_detector_ = nullptr;
@@ -365,6 +373,9 @@ void system::enable_temporal_mapping() {
 }
 
 data::frame system::create_monocular_frame(const cv::Mat& img, const double timestamp, const cv::Mat& mask) {
+    std::cout << "frame_id: " << next_frame_id_ << std::endl;
+    std::cout << "keyframe_num: " << map_db_->get_num_keyframes() << std::endl;
+    std::cout << "landmark_num: " << map_db_->get_num_landmarks() << std::endl;
     // color conversion
     if (!camera_->is_valid_shape(img)) {
         spdlog::warn("preprocess: Input image size is invalid");
@@ -381,17 +392,23 @@ data::frame system::create_monocular_frame(const cv::Mat& img, const double time
         spdlog::warn("preprocess: cannot extract any keypoints");
     }
 
+    lg_keypts_.clear();
+    lightglue_->feature_extract(img, mask, lg_keypts_, frm_obs.lg_descriptors_);
+    std::cout << "lg_keypts_.size(): " << lg_keypts_.size() << std::endl;
+
     // Undistort keypoints
     camera_->undistort_keypoints(keypts_, frm_obs.undist_keypts_);
+    frm_obs.lg_keypts_ = lg_keypts_;
 
     // Convert to bearing vector
     camera_->convert_keypoints_to_bearings(frm_obs.undist_keypts_, frm_obs.bearings_);
+    camera_->convert_lg_keypoints_to_bearings(frm_obs.lg_keypts_, frm_obs.lg_bearings_);
 
     // Assign all the keypoints into grid
     frm_obs.num_grid_cols_ = num_grid_cols_;
     frm_obs.num_grid_rows_ = num_grid_rows_;
-    data::assign_keypoints_to_grid(camera_, frm_obs.undist_keypts_, frm_obs.keypt_indices_in_cells_,
-                                   frm_obs.num_grid_cols_, frm_obs.num_grid_rows_);
+    data::assign_lg_keypoints_to_grid(camera_, frm_obs.lg_keypts_, frm_obs.keypt_indices_in_cells_,
+                                      frm_obs.num_grid_cols_, frm_obs.num_grid_rows_);
 
     // Detect marker
     std::unordered_map<unsigned int, data::marker2d> markers_2d;
@@ -399,7 +416,7 @@ data::frame system::create_monocular_frame(const cv::Mat& img, const double time
         marker_detector_->detect(img_gray, markers_2d);
     }
 
-    return data::frame(next_frame_id_++, timestamp, camera_, orb_params_, frm_obs, std::move(markers_2d));
+    return data::frame(next_frame_id_++, timestamp, camera_, orb_params_, frm_obs, std::move(markers_2d), img);
 }
 
 data::frame system::create_stereo_frame(const cv::Mat& left_img, const cv::Mat& right_img, const double timestamp, const cv::Mat& mask) {
@@ -460,7 +477,7 @@ data::frame system::create_stereo_frame(const cv::Mat& left_img, const cv::Mat& 
         marker_detector_->detect(img_gray, markers_2d);
     }
 
-    return data::frame(next_frame_id_++, timestamp, camera_, orb_params_, frm_obs, std::move(markers_2d));
+    return data::frame(next_frame_id_++, timestamp, camera_, orb_params_, frm_obs, std::move(markers_2d), left_img);
 }
 
 data::frame system::create_RGBD_frame(const cv::Mat& rgb_img, const cv::Mat& depthmap, const double timestamp, const cv::Mat& mask) {
@@ -525,7 +542,7 @@ data::frame system::create_RGBD_frame(const cv::Mat& rgb_img, const cv::Mat& dep
         marker_detector_->detect(img_gray, markers_2d);
     }
 
-    return data::frame(next_frame_id_++, timestamp, camera_, orb_params_, frm_obs, std::move(markers_2d));
+    return data::frame(next_frame_id_++, timestamp, camera_, orb_params_, frm_obs, std::move(markers_2d), rgb_img);
 }
 
 std::shared_ptr<Mat44_t> system::feed_monocular_frame(const cv::Mat& img, const double timestamp, const cv::Mat& mask) {

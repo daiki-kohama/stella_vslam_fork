@@ -4,6 +4,7 @@
 #include "stella_vslam/data/frame.h"
 #include "stella_vslam/initialize/base.h"
 #include "stella_vslam/data/bow_vocabulary_fwd.h"
+#include "stella_vslam/feature/lightglue.h"
 
 #include <memory>
 
@@ -16,6 +17,10 @@ class frame;
 class map_database;
 class bow_database;
 } // namespace data
+
+namespace feature {
+class lightglue;
+}
 
 namespace module {
 
@@ -33,7 +38,8 @@ public:
 
     //! Constructor
     initializer(data::map_database* map_db,
-                const YAML::Node& yaml_node);
+                const YAML::Node& yaml_node,
+                const feature::lightglue* lightglue);
 
     //! Destructor
     ~initializer();
@@ -56,6 +62,9 @@ public:
     //! Initialize with the current frame
     bool initialize(const camera::setup_type_t setup_type,
                     data::bow_vocabulary* bow_vocab, data::frame& curr_frm);
+
+    //! LightGlue
+    const feature::lightglue* lightglue_;
 
 private:
     //! map database
@@ -111,6 +120,8 @@ private:
     std::vector<cv::Point2f> prev_matched_coords_;
     //! initial matching indices (index: idx of initial frame, value: idx of current frame)
     std::vector<int> init_matches_;
+    //! initial matching scores (index: idx of initial frame, value: matching score)
+    std::vector<double> init_match_scores_;
 
     size_t required_keyframes_for_marker_initialization_;
 

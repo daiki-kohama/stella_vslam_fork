@@ -2,6 +2,8 @@
 #include "stella_vslam/data/graph_node.h"
 #include "stella_vslam/data/landmark.h"
 
+#include <iostream>
+
 namespace stella_vslam {
 namespace data {
 
@@ -225,6 +227,12 @@ std::vector<std::shared_ptr<keyframe>> graph_node::get_covisibilities_over_min_n
     std::lock_guard<std::mutex> lock(mtx_);
 
     if (ordered_covisibilities_.empty()) {
+        return std::vector<std::shared_ptr<keyframe>>();
+    }
+
+    std::cout << "ordered_num_shared_lms_.size(): " << ordered_num_shared_lms_.size() << std::endl;
+    std::cout << "min_num_shared_lms: " << min_num_shared_lms << std::endl;
+    if (ordered_num_shared_lms_.size() > 70366731548144 - 10000000) {
         return std::vector<std::shared_ptr<keyframe>>();
     }
 

@@ -7,9 +7,13 @@
 #include "stella_vslam/initialize/perspective.h"
 #include "stella_vslam/marker_model/base.h"
 #include "stella_vslam/match/area.h"
+#include "stella_vslam/match/lightglue.h"
 #include "stella_vslam/module/initializer.h"
 #include "stella_vslam/module/marker_initializer.h"
 #include "stella_vslam/optimize/global_bundle_adjuster.h"
+
+#include <opencv2/imgproc.hpp>
+#include <opencv2/opencv.hpp>
 
 #include <spdlog/spdlog.h>
 
@@ -17,8 +21,9 @@ namespace stella_vslam {
 namespace module {
 
 initializer::initializer(data::map_database* map_db,
-                         const YAML::Node& yaml_node)
-    : map_db_(map_db),
+                         const YAML::Node& yaml_node,
+                         const feature::lightglue* lightglue)
+    : map_db_(map_db), lightglue_(lightglue),
       num_ransac_iters_(yaml_node["num_ransac_iterations"].as<unsigned int>(100)),
       min_num_valid_pts_(yaml_node["min_num_valid_pts"].as<unsigned int>(50)),
       min_num_triangulated_pts_(yaml_node["min_num_triangulated_pts"].as<unsigned int>(50)),
@@ -113,9 +118,9 @@ void initializer::create_initializer(data::frame& curr_frm) {
     init_frm_ = data::frame(curr_frm);
 
     // initialize the previously matched coordinates
-    prev_matched_coords_.resize(init_frm_.frm_obs_.undist_keypts_.size());
-    for (unsigned int i = 0; i < init_frm_.frm_obs_.undist_keypts_.size(); ++i) {
-        prev_matched_coords_.at(i) = init_frm_.frm_obs_.undist_keypts_.at(i).pt;
+    prev_matched_coords_.resize(init_frm_.frm_obs_.lg_keypts_.size());
+    for (unsigned int i = 0; i < init_frm_.frm_obs_.lg_keypts_.size(); ++i) {
+        prev_matched_coords_.at(i) = init_frm_.frm_obs_.lg_keypts_.at(i);
     }
 
     // initialize matchings (init_idx -> curr_idx)
@@ -148,14 +153,12 @@ void initializer::create_initializer(data::frame& curr_frm) {
 bool initializer::try_initialize_for_monocular(data::frame& curr_frm) {
     assert(state_ == initializer_state_t::Initializing);
 
-    int keypt_margin = 100;
-    if (init_frm_.camera_->model_type_ == camera::model_type_t::Equirectangular) {
-        keypt_margin = static_cast<int>(init_frm_.camera_->rows_ * 0.2);
-    }
-    match::area matcher(0.9, init_frm_.camera_->model_type_ != camera::model_type_t::Equirectangular);
-    const auto num_matches = matcher.match_in_consistent_area(init_frm_, curr_frm, prev_matched_coords_, init_matches_, keypt_margin);
+    match::lightglue lg_matcher(0.9, init_frm_.camera_->model_type_ != camera::model_type_t::Equirectangular, lightglue_);
+    const auto num_matches_lg = lg_matcher.match_frame_and_frame(init_frm_, curr_frm, prev_matched_coords_, init_matches_, init_match_scores_);
 
-    if (num_matches < min_num_valid_pts_) {
+    std::cout << "LightGlue matched: " << num_matches_lg << std::endl;
+
+    if (num_matches_lg < min_num_valid_pts_) {
         // rebuild the initializer with the next frame
         reset();
         return false;
@@ -192,6 +195,7 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
         Mat44_t cam_pose_cw = Mat44_t::Identity();
         cam_pose_cw.block<3, 3>(0, 0) = initializer_->get_rotation_ref_to_cur();
         cam_pose_cw.block<3, 1>(0, 3) = initializer_->get_translation_ref_to_cur();
+        std::cout << "cam_pose_cw: " << cam_pose_cw << std::endl;
         curr_frm.set_pose_cw(cam_pose_cw);
 
         // destruct the initializer
@@ -208,10 +212,10 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
     map_db_->add_spanning_root(init_keyfrm);
 
     // compute BoW representations
-    if (bow_vocab) {
-        init_keyfrm->compute_bow(bow_vocab);
-        curr_keyfrm->compute_bow(bow_vocab);
-    }
+    // if (bow_vocab) {
+    //     init_keyfrm->compute_bow(bow_vocab);
+    //     curr_keyfrm->compute_bow(bow_vocab);
+    // }
 
     // add the keyframes to the map DB
     map_db_->add_keyframe(init_keyfrm);
@@ -237,6 +241,7 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
         // set the assocications to the new keyframes
         lm->connect_to_keyframe(init_keyfrm, init_idx);
         lm->connect_to_keyframe(curr_keyfrm, curr_idx);
+        lm->add_match_score(init_keyfrm, curr_keyfrm, init_match_scores_.at(init_idx));
 
         // update the descriptor
         lm->compute_descriptor();
@@ -307,6 +312,24 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
 
     // update the current frame pose
     curr_frm.set_pose_cw(curr_keyfrm->get_pose_cw());
+
+    const auto landmarks = init_keyfrm->get_landmarks();
+    cv::Mat init_frm_keypoints = init_frm_.image_.clone();
+    cv::Mat curr_frm_keypoints = curr_frm.image_.clone();
+    for (const auto& lm : landmarks) {
+        if (!lm) {
+            continue;
+        }
+        const Vec3_t pos_w = lm->get_pos_in_world();
+        Vec2_t reproj;
+        float x_right;
+        init_keyfrm->camera_->reproject_to_image(init_keyfrm->get_rot_cw(), init_keyfrm->get_trans_cw(), pos_w, reproj, x_right);
+        cv::circle(init_frm_keypoints, cv::Point(reproj(0), reproj(1)), 2, cv::Scalar(0, 255, 0), 2);
+        curr_keyfrm->camera_->reproject_to_image(curr_keyfrm->get_rot_cw(), curr_keyfrm->get_trans_cw(), pos_w, reproj, x_right);
+        cv::circle(curr_frm_keypoints, cv::Point(reproj(0), reproj(1)), 2, cv::Scalar(0, 255, 0), 2);
+    }
+    cv::imwrite("new_map_lm_" + std::to_string(init_frm_.id_) + ".jpg", init_frm_keypoints);
+    cv::imwrite("new_map_lm_" + std::to_string(curr_frm.id_) + ".jpg", curr_frm_keypoints);
 
     spdlog::info("new map created with {} points: frame {} - frame {}", map_db_->get_num_landmarks(), init_frm_.id_, curr_frm.id_);
     state_ = initializer_state_t::Succeeded;

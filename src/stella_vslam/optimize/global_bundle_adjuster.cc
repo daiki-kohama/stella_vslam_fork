@@ -108,14 +108,14 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
             }
 
             const auto keyfrm_vtx = keyfrm_vtx_container.get_vertex(keyfrm);
-            const auto& undist_keypt = keyfrm->frm_obs_.undist_keypts_.at(idx);
+            const auto& lg_keypt = keyfrm->frm_obs_.lg_keypts_.at(idx);
             const float x_right = keyfrm->frm_obs_.stereo_x_right_.empty() ? -1.0f : keyfrm->frm_obs_.stereo_x_right_.at(idx);
-            const float inv_sigma_sq = keyfrm->orb_params_->inv_level_sigma_sq_.at(undist_keypt.octave);
+            const float inv_sigma_sq = lm->get_keyfrm_avg_score(keyfrm) * lm->get_keyfrm_avg_score(keyfrm);
             const auto sqrt_chi_sq = (keyfrm->camera_->setup_type_ == camera::setup_type_t::Monocular)
                                          ? sqrt_chi_sq_2D
                                          : sqrt_chi_sq_3D;
             auto reproj_edge_wrap = reproj_edge_wrapper(keyfrm, keyfrm_vtx, lm, lm_vtx,
-                                                        idx, undist_keypt.pt.x, undist_keypt.pt.y, x_right,
+                                                        idx, lg_keypt.x, lg_keypt.y, x_right,
                                                         inv_sigma_sq, sqrt_chi_sq, use_huber_kernel);
             reproj_edge_wraps.push_back(reproj_edge_wrap);
             optimizer.addEdge(reproj_edge_wrap.edge_);

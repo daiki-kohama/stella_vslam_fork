@@ -34,6 +34,7 @@ class bow_database;
 
 namespace feature {
 class orb_extractor;
+class lightglue;
 struct orb_params;
 } // namespace feature
 
@@ -247,6 +248,9 @@ private:
     //! ORB extractor only when used in initializing
     feature::orb_extractor* ini_extractor_left_ = nullptr;
 
+    //! LightGlue
+    feature::lightglue* lightglue_ = nullptr;
+
     //! number of columns of grid to accelerate reprojection matching
     unsigned int num_grid_cols_ = 64;
     //! number of rows of grid to accelerate reprojection matching
@@ -284,6 +288,9 @@ private:
 
     //! Temporary variables for visualization
     std::vector<cv::KeyPoint> keypts_;
+
+    //! Temporary variables for lg_keypts
+    std::vector<cv::Point2f> lg_keypts_;
 };
 
 } // namespace stella_vslam

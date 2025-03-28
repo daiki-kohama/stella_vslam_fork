@@ -4,6 +4,7 @@ cd /stella_vslam_ws/build && \
 cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DDETRMINISTIC=ON \
+    -DUSE_LIGHTGLUE=ON \
     .. && \
 make -j15 && \
 make install

@@ -172,6 +172,9 @@ public:
     //! Convert undistorted keypoints to bearing vectors
     virtual void convert_keypoints_to_bearings(const std::vector<cv::KeyPoint>& undist_keypts, eigen_alloc_vector<Vec3_t>& bearings) const;
 
+    //! Convert LightGlue undistorted keypoints to bearing vectors
+    virtual void convert_lg_keypoints_to_bearings(const std::vector<cv::Point2f>& keypts, eigen_alloc_vector<Vec3_t>& bearings) const;
+
     //! Convert bearing vectors to undistorted points
     virtual void convert_bearings_to_points(const eigen_alloc_vector<Vec3_t>& bearings, std::vector<cv::Point2f>& undist_pts) const;
 };

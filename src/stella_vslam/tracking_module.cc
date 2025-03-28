@@ -8,9 +8,11 @@
 #include "stella_vslam/data/map_database.h"
 #include "stella_vslam/data/bow_database.h"
 #include "stella_vslam/match/projection.h"
+#include "stella_vslam/match/lightglue.h"
 #include "stella_vslam/module/local_map_updater.h"
 #include "stella_vslam/optimize/pose_optimizer_factory.h"
 #include "stella_vslam/util/yaml.h"
+#include "stella_vslam/feature/lightglue.h"
 
 #include <chrono>
 #include <unordered_map>
@@ -20,9 +22,10 @@
 namespace stella_vslam {
 
 tracking_module::tracking_module(const std::shared_ptr<config>& cfg, camera::base* camera, data::map_database* map_db,
-                                 data::bow_vocabulary* bow_vocab, data::bow_database* bow_db)
+                                 data::bow_vocabulary* bow_vocab, data::bow_database* bow_db, const feature::lightglue* lightglue)
     : camera_(camera),
       tracking_yaml_(util::yaml_optional_ref(cfg->yaml_node_, "Tracking")),
+      lightglue_(lightglue),
       reloc_distance_threshold_(tracking_yaml_["reloc_distance_threshold"].as<double>(0.2)),
       reloc_angle_threshold_(tracking_yaml_["reloc_angle_threshold"].as<double>(0.45)),
       init_retry_threshold_time_(tracking_yaml_["init_retry_threshold_time"].as<double>(5.0)),
@@ -33,7 +36,7 @@ tracking_module::tracking_module(const std::shared_ptr<config>& cfg, camera::bas
       margin_local_map_projection_(tracking_yaml_["margin_local_map_projection"].as<float>(5.0)),
       margin_local_map_projection_unstable_(tracking_yaml_["margin_local_map_projection_unstable"].as<float>(20.0)),
       map_db_(map_db), bow_vocab_(bow_vocab), bow_db_(bow_db),
-      initializer_(map_db, util::yaml_optional_ref(cfg->yaml_node_, "Initializer")),
+      initializer_(map_db, util::yaml_optional_ref(cfg->yaml_node_, "Initializer"), lightglue),
       pose_optimizer_(optimize::pose_optimizer_factory::create(tracking_yaml_)),
       frame_tracker_(camera_, pose_optimizer_, 10, initializer_.get_use_fixed_seed(), tracking_yaml_["margin_last_frame_projection"].as<float>(20.0)),
       relocalizer_(pose_optimizer_, util::yaml_optional_ref(cfg->yaml_node_, "Relocalizer")),
@@ -336,19 +339,19 @@ bool tracking_module::track_current_frame() {
     // Tracking mode
     if (twist_is_valid_) {
         // if the motion model is valid
-        succeeded = frame_tracker_.motion_based_track(curr_frm_, last_frm_, twist_);
+        succeeded = frame_tracker_.lightglue_frame_match_based_track(curr_frm_, last_frm_, twist_, lightglue_);
     }
+    // if (!succeeded) {
+    //     // Compute the BoW representations to perform the BoW match
+    //     if (bow_vocab_ && !curr_frm_.bow_is_available()) {
+    //         curr_frm_.compute_bow(bow_vocab_);
+    //     }
+    //     if (curr_frm_.bow_is_available() && curr_frm_.ref_keyfrm_->bow_is_available()) {
+    //         succeeded = frame_tracker_.bow_match_based_track(curr_frm_, last_frm_, curr_frm_.ref_keyfrm_);
+    //     }
+    // }
     if (!succeeded) {
-        // Compute the BoW representations to perform the BoW match
-        if (bow_vocab_ && !curr_frm_.bow_is_available()) {
-            curr_frm_.compute_bow(bow_vocab_);
-        }
-        if (curr_frm_.bow_is_available() && curr_frm_.ref_keyfrm_->bow_is_available()) {
-            succeeded = frame_tracker_.bow_match_based_track(curr_frm_, last_frm_, curr_frm_.ref_keyfrm_);
-        }
-    }
-    if (!succeeded) {
-        succeeded = frame_tracker_.robust_match_based_track(curr_frm_, last_frm_, curr_frm_.ref_keyfrm_);
+        succeeded = frame_tracker_.lightglue_keyframe_match_based_track(curr_frm_, last_frm_, curr_frm_.ref_keyfrm_, lightglue_);
     }
 
     return succeeded;
@@ -444,11 +447,12 @@ bool tracking_module::optimize_current_frame_with_local_map(unsigned int& num_tr
     // optimize the pose
     Mat44_t optimized_pose;
     std::vector<bool> outlier_flags;
+    // TODO: optimization with matching score of LightGlue
     pose_optimizer_->optimize(curr_frm_, optimized_pose, outlier_flags);
     curr_frm_.set_pose_cw(optimized_pose);
 
     // Reject outliers
-    for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.undist_keypts_.size(); ++idx) {
+    for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.lg_keypts_.size(); ++idx) {
         if (!outlier_flags.at(idx)) {
             continue;
         }
@@ -458,7 +462,7 @@ bool tracking_module::optimize_current_frame_with_local_map(unsigned int& num_tr
     // count up the number of tracked landmarks
     num_tracked_lms = 0;
     num_reliable_lms = 0;
-    for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.undist_keypts_.size(); ++idx) {
+    for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.lg_keypts_.size(); ++idx) {
         const auto& lm = curr_frm_.get_landmark(idx);
         if (!lm) {
             continue;
@@ -500,7 +504,7 @@ bool tracking_module::optimize_current_frame_with_local_map(unsigned int& num_tr
 bool tracking_module::update_local_map(unsigned int fixed_keyframe_id_threshold,
                                        unsigned int& num_temporal_keyfrms) {
     // clean landmark associations
-    for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.undist_keypts_.size(); ++idx) {
+    for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.lg_keypts_.size(); ++idx) {
         const auto& lm = curr_frm_.get_landmark(idx);
         if (!lm) {
             continue;
@@ -584,7 +588,7 @@ bool tracking_module::search_local_landmarks(unsigned int fixed_keyframe_id_thre
         if (curr_frm_.can_observe(lm, 0.5, reproj, x_right, pred_scale_level)) {
             lm_to_reproj[lm->id_] = reproj;
             lm_to_x_right[lm->id_] = x_right;
-            lm_to_scale[lm->id_] = pred_scale_level;
+            // lm_to_scale[lm->id_] = pred_scale_level;
 
             // this landmark is observable from the current frame
             lm->increase_num_observable();
@@ -599,11 +603,13 @@ bool tracking_module::search_local_landmarks(unsigned int fixed_keyframe_id_thre
     }
 
     // acquire more 2D-3D matches by projecting the local landmarks to the current frame
-    match::projection projection_matcher(0.8);
-    const float margin = (curr_frm_.id_ < last_reloc_frm_id_ + 2)
-                             ? margin_local_map_projection_unstable_
-                             : margin_local_map_projection_;
-    projection_matcher.match_frame_and_landmarks(curr_frm_, local_landmarks_, lm_to_reproj, lm_to_x_right, lm_to_scale, margin);
+    // match::projection projection_matcher(0.8);
+    // const float margin = (curr_frm_.id_ < last_reloc_frm_id_ + 2)
+    //                          ? margin_local_map_projection_unstable_
+    //                          : margin_local_map_projection_;
+    // projection_matcher.match_frame_and_landmarks(curr_frm_, local_landmarks_, lm_to_reproj, lm_to_x_right, lm_to_scale, margin);
+    match::lightglue lg_matcher(0.8, false, lightglue_);
+    lg_matcher.match_frame_and_landmarks(curr_frm_, local_landmarks_, lm_to_reproj);
     return true;
 }
 

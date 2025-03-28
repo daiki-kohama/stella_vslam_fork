@@ -233,14 +233,15 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
             }
 
             const auto keyfrm_vtx = keyfrm_vtx_container.get_vertex(keyfrm);
-            const auto& undist_keypt = keyfrm->frm_obs_.undist_keypts_.at(idx);
+            const auto& undist_keypt = keyfrm->frm_obs_.lg_keypts_.at(idx);
             const float x_right = keyfrm->frm_obs_.stereo_x_right_.empty() ? -1.0f : keyfrm->frm_obs_.stereo_x_right_.at(idx);
-            const float inv_sigma_sq = keyfrm->orb_params_->inv_level_sigma_sq_.at(undist_keypt.octave);
+            std::cout << "IN local_bundle_adjuster_g2o::optimize; keyfrm->id_: " << keyfrm->id_ << ", idx: " << idx << ", local_lm->id_: " << local_lm->id_ << std::endl;
+            const float inv_sigma_sq = local_lm->get_keyfrm_avg_score(keyfrm) * local_lm->get_keyfrm_avg_score(keyfrm);
             const auto sqrt_chi_sq = (keyfrm->camera_->setup_type_ == camera::setup_type_t::Monocular)
                                          ? sqrt_chi_sq_2D
                                          : sqrt_chi_sq_3D;
             auto reproj_edge_wrap = reproj_edge_wrapper(keyfrm, keyfrm_vtx, local_lm, lm_vtx,
-                                                        idx, undist_keypt.pt.x, undist_keypt.pt.y, x_right,
+                                                        idx, undist_keypt.x, undist_keypt.y, x_right,
                                                         inv_sigma_sq, sqrt_chi_sq);
             reproj_edge_wraps.push_back(reproj_edge_wrap);
             optimizer.addEdge(reproj_edge_wrap.edge_);

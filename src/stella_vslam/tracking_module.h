@@ -7,6 +7,7 @@
 #include "stella_vslam/module/relocalizer.h"
 #include "stella_vslam/module/keyframe_inserter.h"
 #include "stella_vslam/module/frame_tracker.h"
+#include "stella_vslam/feature/lightglue.h"
 
 #include <mutex>
 #include <memory>
@@ -25,6 +26,10 @@ namespace data {
 class map_database;
 class bow_database;
 } // namespace data
+
+namespace feature {
+class lightglue;
+}
 
 // tracker state
 enum class tracker_state_t {
@@ -47,7 +52,7 @@ public:
 
     //! Constructor
     tracking_module(const std::shared_ptr<config>& cfg, camera::base* camera, data::map_database* map_db,
-                    data::bow_vocabulary* bow_vocab, data::bow_database* bow_db);
+                    data::bow_vocabulary* bow_vocab, data::bow_database* bow_db, const feature::lightglue* lightglue);
 
     //! Destructor
     ~tracking_module();
@@ -113,6 +118,9 @@ public:
 
     //! yaml node
     YAML::Node tracking_yaml_;
+
+    //! LightGlue
+    const feature::lightglue* lightglue_;
 
     //! closest keyframes thresholds (by distance and angle) to relocalize with when updating by pose
     double reloc_distance_threshold_ = 0.2;

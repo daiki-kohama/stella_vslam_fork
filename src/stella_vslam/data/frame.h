@@ -52,7 +52,7 @@ public:
      * @param markers_2d
      */
     frame(const unsigned int frame_id, const double timestamp, camera::base* camera, feature::orb_params* orb_params,
-          const frame_observation frm_obs, const std::unordered_map<unsigned int, marker2d>& markers_2d);
+          const frame_observation frm_obs, const std::unordered_map<unsigned int, marker2d>& markers_2d, const cv::Mat& image);
 
     /**
      * Set camera pose and refresh rotation and translation
@@ -142,6 +142,10 @@ public:
 
     void set_landmarks(const std::vector<std::shared_ptr<landmark>>& landmarks);
 
+    void add_match_score(const unsigned int ref_frm_id, const std::vector<double>& match_score);
+
+    std::vector<std::pair<unsigned int, double>> get_match_score(const unsigned int idx);
+
     /**
      * Get keypoint indices in the cell which reference point is located
      * @param ref_x
@@ -185,10 +189,16 @@ public:
     //! reference keyframe for tracking
     std::shared_ptr<keyframe> ref_keyfrm_ = nullptr;
 
+    //! frame image
+    cv::Mat image_;
+
 private:
     //! landmarks, whose nullptr indicates no-association
     std::vector<std::shared_ptr<landmark>> landmarks_;
     std::unordered_map<std::shared_ptr<landmark>, unsigned int> landmarks_idx_map_;
+
+    //! match scores (frame ID, score) for each keypoint
+    std::vector<std::vector<std::pair<unsigned int, double>>> match_scores_;
 
     //! camera pose: world -> camera
     bool pose_is_valid_ = false;

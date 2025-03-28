@@ -133,7 +133,15 @@ std::shared_ptr<data::keyframe> keyframe_inserter::create_new_keyframe(
     std::lock_guard<std::mutex> lock(data::map_database::mtx_database_);
 
     auto keyfrm = data::keyframe::make_keyframe(map_db->next_keyframe_id_++, curr_frm);
-    keyfrm->update_landmarks();
+
+    // Prepare for matching score adding
+    std::unordered_map<unsigned int, std::shared_ptr<data::keyframe>> keyfrm_src_frm_id_map;
+    const auto keyframes = map_db->get_all_keyframes();
+    for (const auto& keyfrm_tmp : keyframes) {
+        keyfrm_src_frm_id_map[keyfrm_tmp->src_frm_id_] = keyfrm_tmp;
+    }
+
+    keyfrm->update_landmarks(curr_frm, keyfrm_src_frm_id_map);
 
     for (const auto& id_mkr2d : keyfrm->markers_2d_) {
         auto marker = map_db->get_marker(id_mkr2d.first);
@@ -159,8 +167,8 @@ std::shared_ptr<data::keyframe> keyframe_inserter::create_new_keyframe(
 
     // Save the valid depth and index pairs
     std::vector<std::pair<float, unsigned int>> depth_idx_pairs;
-    depth_idx_pairs.reserve(curr_frm.frm_obs_.undist_keypts_.size());
-    for (unsigned int idx = 0; idx < curr_frm.frm_obs_.undist_keypts_.size(); ++idx) {
+    depth_idx_pairs.reserve(curr_frm.frm_obs_.lg_keypts_.size());
+    for (unsigned int idx = 0; idx < curr_frm.frm_obs_.lg_keypts_.size(); ++idx) {
         assert(!curr_frm.frm_obs_.depths_.empty());
         const auto depth = curr_frm.frm_obs_.depths_.at(idx);
         // Add if the depth is valid
@@ -204,6 +212,16 @@ std::shared_ptr<data::keyframe> keyframe_inserter::create_new_keyframe(
 
         lm->connect_to_keyframe(keyfrm, idx);
         curr_frm.add_landmark(lm, idx);
+        auto match_scores = curr_frm.get_match_score(idx);
+        for (unsigned int i = 0; i < match_scores.size(); ++i) {
+            const auto frm_id = match_scores.at(i).first;
+            const auto score = match_scores.at(i).second;
+            const auto keyfrm_tmp = keyfrm_src_frm_id_map[frm_id];
+            if (!keyfrm_tmp) {
+                continue;
+            }
+            lm->add_match_score(keyfrm, keyfrm_tmp, score);
+        }
 
         lm->compute_descriptor();
         lm->update_mean_normal_and_obs_scale_variance();

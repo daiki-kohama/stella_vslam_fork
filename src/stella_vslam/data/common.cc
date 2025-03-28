@@ -115,16 +115,43 @@ auto assign_keypoints_to_grid(const camera::base* camera, const std::vector<cv::
     return keypt_indices_in_cells;
 }
 
+void assign_lg_keypoints_to_grid(const camera::base* camera, const std::vector<cv::Point2f>& lg_keypts,
+                                 std::vector<std::vector<std::vector<unsigned int>>>& keypt_indices_in_cells,
+                                 unsigned int num_grid_cols, unsigned int num_grid_rows) {
+    double inv_cell_width = static_cast<double>(num_grid_cols) / (camera->img_bounds_.max_x_ - camera->img_bounds_.min_x_);
+    double inv_cell_height = static_cast<double>(num_grid_rows) / (camera->img_bounds_.max_y_ - camera->img_bounds_.min_y_);
+
+    // Pre-allocate memory
+    const unsigned int num_keypts = lg_keypts.size();
+    const unsigned int num_to_reserve = 0.5 * num_keypts / (num_grid_cols * num_grid_rows);
+    keypt_indices_in_cells.resize(num_grid_cols);
+    for (auto& keypt_indices_in_row : keypt_indices_in_cells) {
+        keypt_indices_in_row.resize(num_grid_rows);
+        for (auto& keypt_indices_in_cell : keypt_indices_in_row) {
+            keypt_indices_in_cell.reserve(num_to_reserve);
+        }
+    }
+
+    // Calculate cell position and store
+    for (unsigned int idx = 0; idx < num_keypts; ++idx) {
+        const auto& lg_keypt = lg_keypts.at(idx);
+        int cell_idx_x, cell_idx_y;
+        if (get_cell_lg_indices(camera, lg_keypt, num_grid_cols, num_grid_rows, inv_cell_width, inv_cell_height, cell_idx_x, cell_idx_y)) {
+            keypt_indices_in_cells.at(cell_idx_x).at(cell_idx_y).push_back(idx);
+        }
+    }
+}
+
 std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, const data::frame_observation& frm_obs,
                                                 const float ref_x, const float ref_y, const float margin,
                                                 const int min_level, const int max_level) {
-    return get_keypoints_in_cell(camera, frm_obs.undist_keypts_, frm_obs.keypt_indices_in_cells_,
+    return get_keypoints_in_cell(camera, frm_obs.lg_keypts_, frm_obs.keypt_indices_in_cells_,
                                  ref_x, ref_y, margin,
                                  frm_obs.num_grid_cols_, frm_obs.num_grid_rows_,
                                  min_level, max_level);
 }
 
-std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, const std::vector<cv::KeyPoint>& undist_keypts,
+std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, const std::vector<cv::Point2f>& lg_keypts,
                                                 const std::vector<std::vector<std::vector<unsigned int>>>& keypt_indices_in_cells,
                                                 const float ref_x, const float ref_y, const float margin,
                                                 const unsigned int num_grid_cols, const unsigned int num_grid_rows,
@@ -154,7 +181,7 @@ std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, cons
         return indices;
     }
 
-    indices.reserve(undist_keypts.size());
+    indices.reserve(lg_keypts.size());
 
     const bool check_min_level = 0 <= min_level;
     const bool check_max_level = 0 <= max_level;
@@ -167,17 +194,17 @@ std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, cons
             }
 
             for (unsigned int idx : keypt_indices_in_cell) {
-                const auto& undist_keypt = undist_keypts.at(idx);
+                const auto& lg_keypt = lg_keypts.at(idx);
 
-                if (check_min_level && undist_keypt.octave < min_level) {
-                    continue;
-                }
-                if (check_max_level && max_level < undist_keypt.octave) {
-                    continue;
-                }
+                // if (check_min_level && undist_keypt.octave < min_level) {
+                //     continue;
+                // }
+                // if (check_max_level && max_level < undist_keypt.octave) {
+                //     continue;
+                // }
 
-                const float dist_x = undist_keypt.pt.x - ref_x;
-                const float dist_y = undist_keypt.pt.y - ref_y;
+                const float dist_x = lg_keypt.x - ref_x;
+                const float dist_y = lg_keypt.y - ref_y;
 
                 if (std::abs(dist_x) < margin && std::abs(dist_y) < margin) {
                     indices.push_back(idx);

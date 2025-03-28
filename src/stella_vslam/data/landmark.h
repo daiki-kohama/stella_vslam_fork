@@ -91,6 +91,20 @@ public:
         return (min_dist <= cam_to_lm_dist && cam_to_lm_dist <= max_dist);
     }
 
+    //! get match scores (keyframe ID -> (matched keyframe ID, score))
+    std::map<unsigned int, std::vector<std::pair<unsigned int, float>>> get_match_scores() const;
+    //! add match score
+    void add_match_score(const std::shared_ptr<keyframe>& keyfrm1, const std::shared_ptr<keyframe>& keyfrm2, const float score);
+    //! get average score of the specified keyframe
+    float get_keyfrm_avg_score(const std::shared_ptr<keyframe>& keyfrm) const;
+
+    using lg_keypoints_t = std::map<std::shared_ptr<keyframe>, cv::Point2f, id_less<std::shared_ptr<keyframe>>>;
+    using lg_descriptors_t = std::map<std::shared_ptr<keyframe>, std::vector<double>, id_less<std::shared_ptr<keyframe>>>;
+    //! get LightGlue keypoints for each keyframe
+    lg_keypoints_t get_lg_keypoints() const;
+    //! get LightGlue descriptors for each keyframe
+    lg_descriptors_t get_lg_descriptors() const;
+
     //! true if the landmark has representative descriptor
     bool has_representative_descriptor() const;
 
@@ -179,6 +193,9 @@ private:
     float min_valid_dist_ = 0;
     //! min valid distance between landmark and camera
     float max_valid_dist_ = 0;
+
+    //! match scores (keyframe ID -> (matched keyframe ID, score))
+    std::map<unsigned int, std::vector<std::pair<unsigned int, float>>> match_scores_;
 
     mutable std::mutex mtx_position_;
     mutable std::mutex mtx_observations_;

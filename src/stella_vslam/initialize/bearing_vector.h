@@ -38,8 +38,32 @@ private:
     //! (NOTE: the output variables will be set if succeeded)
     bool reconstruct_with_E(const Mat33_t& E_ref_to_cur, const std::vector<bool>& is_inlier_match);
 
+    //! Generate 3D points from matches with valid and sufficient parallax
+    unsigned int triangulate(const Mat33_t& rot_ref_to_cur, const Vec3_t& trans_ref_to_cur,
+                             const std::vector<bool>& is_inlier_match, const bool depth_is_positive,
+                             eigen_alloc_vector<Vec3_t>& triangulated_pts,
+                             std::vector<bool>& is_triangulated,
+                             unsigned int& num_triangulated_pts,
+                             float& parallax_deg);
+
     //! Use fixed random seed for RANSAC if true
     const bool use_fixed_seed_;
+
+    //-----------------------------------------
+    // reference frame information
+
+    //! LightGlue keypoints of reference frame
+    const std::vector<cv::Point2f> ref_lg_keypts_;
+    //! bearing vectors of reference frame
+    const eigen_alloc_vector<Vec3_t> ref_lg_bearings_;
+
+    //-----------------------------------------
+    // current frame information
+
+    //! LightGlue keypoints of current frame
+    std::vector<cv::Point2f> cur_lg_keypts_;
+    //! bearing vectors of current frame
+    eigen_alloc_vector<Vec3_t> cur_lg_bearings_;
 };
 
 } // namespace initialize

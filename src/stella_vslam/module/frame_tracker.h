@@ -34,6 +34,11 @@ public:
 
     bool robust_match_based_track(data::frame& curr_frm, const data::frame& last_frm, const std::shared_ptr<data::keyframe>& ref_keyfrm) const;
 
+    bool lightglue_frame_match_based_track(data::frame& curr_frm, const data::frame& last_frm, const Mat44_t& velocity, const feature::lightglue* lightglue) const;
+
+    bool lightglue_keyframe_match_based_track(data::frame& curr_frm, const data::frame& last_frm, const std::shared_ptr<data::keyframe>& ref_keyfrm,
+                                              const feature::lightglue* lightglue) const;
+
 private:
     unsigned int discard_outliers(const std::vector<bool>& outlier_flags, data::frame& curr_frm) const;
 

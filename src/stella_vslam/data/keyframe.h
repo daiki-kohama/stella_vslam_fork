@@ -51,7 +51,7 @@ public:
     keyframe(const unsigned int id, const unsigned int src_frm_id,
              const double timestamp, const Mat44_t& pose_cw, camera::base* camera,
              const feature::orb_params* orb_params, const frame_observation& frm_obs,
-             const bow_vector& bow_vec, const bow_feature_vector& bow_feat_vec,
+             const bow_vector& bow_vec, const bow_feature_vector& bow_feat_vec, const cv::Mat& image,
              std::unordered_map<unsigned int, marker2d> markers_2d = {});
     virtual ~keyframe();
 
@@ -61,7 +61,7 @@ public:
         const unsigned int id, const unsigned int src_frm_id,
         const double timestamp, const Mat44_t& pose_cw, camera::base* camera,
         const feature::orb_params* orb_params, const frame_observation& frm_obs,
-        const bow_vector& bow_vec, const bow_feature_vector& bow_feat_vec,
+        const bow_vector& bow_vec, const bow_feature_vector& bow_feat_vec, const cv::Mat& image = cv::Mat(),
         std::unordered_map<unsigned int, marker2d> markers_2d = {});
     static std::shared_ptr<keyframe> from_stmt(sqlite3_stmt* stmt,
                                                camera_database* cam_db,
@@ -166,7 +166,8 @@ public:
     /**
      * Update all of the landmarks
      */
-    void update_landmarks();
+    void update_landmarks(data::frame& frm,
+                          std::unordered_map<unsigned int, std::shared_ptr<data::keyframe>>& keyfrm_src_frm_id_map);
 
     /**
      * Get all of the landmarks
@@ -290,6 +291,9 @@ public:
 
     //! graph node
     std::unique_ptr<graph_node> graph_node_ = nullptr;
+
+    //! keyframe image
+    cv::Mat image_;
 
 private:
     //-----------------------------------------

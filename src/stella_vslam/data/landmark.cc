@@ -136,7 +136,21 @@ void landmark::erase_observation(map_database* map_db, const std::shared_ptr<key
             num_observations_ -= 1;
         }
 
+        match_scores_.erase(keyfrm->id_);
+        for (auto& [keyfrm_id, matches] : match_scores_) {
+            matches.erase(
+                std::remove_if(matches.begin(), matches.end(),
+                               [&keyfrm](const std::pair<unsigned int, float>& match) {
+                                   return match.first == keyfrm->id_;
+                               }),
+                matches.end());
+        }
+
         observations_.erase(keyfrm);
+        std::cout << "landmark::erase_observation: " << id_ << " " << keyfrm->id_ << std::endl;
+        for (const auto& lm : observations_) {
+            std::cout << "  " << lm.first.lock()->id_ << std::endl;
+        }
 
         has_valid_prediction_parameters_ = false;
         has_representative_descriptor_ = false;
@@ -185,6 +199,64 @@ bool landmark::is_observed_in_keyframe(const std::shared_ptr<keyframe>& keyfrm) 
     return static_cast<bool>(observations_.count(keyfrm));
 }
 
+std::map<unsigned int, std::vector<std::pair<unsigned int, float>>> landmark::get_match_scores() const {
+    std::lock_guard<std::mutex> lock(mtx_observations_);
+    return match_scores_;
+}
+
+void landmark::add_match_score(const std::shared_ptr<keyframe>& keyfrm1, const std::shared_ptr<keyframe>& keyfrm2, const float score) {
+    const auto keyfrm_id1 = keyfrm1->id_;
+    const auto keyfrm_id2 = keyfrm2->id_;
+    match_scores_[keyfrm_id1].emplace_back(keyfrm_id2, score);
+    match_scores_[keyfrm_id2].emplace_back(keyfrm_id1, score);
+}
+
+float landmark::get_keyfrm_avg_score(const std::shared_ptr<keyframe>& keyfrm) const {
+    float avg_score = 0.0;
+    const auto keyfrm_id = keyfrm->id_;
+    if (!match_scores_.count(keyfrm_id)) {
+        return avg_score;
+    }
+    const auto& scores = match_scores_.at(keyfrm_id);
+    for (const auto& score : scores) {
+        avg_score += score.second;
+    }
+    avg_score /= scores.size();
+    return avg_score;
+}
+
+landmark::lg_keypoints_t landmark::get_lg_keypoints() const {
+    std::lock_guard<std::mutex> lock(mtx_observations_);
+    lg_keypoints_t lg_keypoints;
+    for (const auto& observation : observations_) {
+        auto keyfrm = observation.first.lock();
+        const auto idx = observation.second;
+        if (!keyfrm) {
+            continue;
+        }
+        if (!keyfrm->will_be_erased()) {
+            lg_keypoints[keyfrm] = keyfrm->frm_obs_.lg_keypts_.at(idx);
+        }
+    }
+    return lg_keypoints;
+}
+
+landmark::lg_descriptors_t landmark::get_lg_descriptors() const {
+    std::lock_guard<std::mutex> lock(mtx_observations_);
+    lg_descriptors_t lg_descriptors;
+    for (const auto& observation : observations_) {
+        auto keyfrm = observation.first.lock();
+        const auto idx = observation.second;
+        if (!keyfrm) {
+            continue;
+        }
+        if (!keyfrm->will_be_erased()) {
+            lg_descriptors[keyfrm] = keyfrm->frm_obs_.lg_descriptors_.at(idx);
+        }
+    }
+    return lg_descriptors;
+}
+
 bool landmark::has_representative_descriptor() const {
     std::lock_guard<std::mutex> lock(mtx_observations_);
     return has_representative_descriptor_;
@@ -195,7 +267,7 @@ cv::Mat landmark::get_descriptor() const {
     assert(has_representative_descriptor_);
     return descriptor_.clone();
 }
-
+// TODO: Implement this function for LightGlue
 void landmark::compute_descriptor() {
     observations_t observations;
     {
@@ -257,6 +329,14 @@ void landmark::compute_mean_normal(const observations_t& observations,
                                    const Vec3_t& pos_w,
                                    Vec3_t& mean_normal) const {
     mean_normal = Vec3_t::Zero();
+    std::cout << "landmark->id_: " << id_ << std::endl;
+    for (const auto& observation : observations) {
+        auto keyfrm = observation.first.lock();
+        if (!keyfrm) {
+            continue;
+        }
+        std::cout << "  keyfrm->id_: " << keyfrm->id_ << std::endl;
+    }
     for (const auto& observation : observations) {
         auto keyfrm = observation.first.lock();
         const Vec3_t normal = pos_w - keyfrm->get_trans_wc();
@@ -303,14 +383,14 @@ void landmark::update_mean_normal_and_obs_scale_variance() {
     Vec3_t mean_normal;
     compute_mean_normal(observations, pos_w, mean_normal);
 
-    float max_valid_dist;
-    float min_valid_dist;
-    compute_orb_scale_variance(observations, ref_keyfrm, pos_w, max_valid_dist, min_valid_dist);
+    // float max_valid_dist;
+    // float min_valid_dist;
+    // compute_orb_scale_variance(observations, ref_keyfrm, pos_w, max_valid_dist, min_valid_dist);
 
     {
         std::lock_guard<std::mutex> lock3(mtx_position_);
-        max_valid_dist_ = max_valid_dist;
-        min_valid_dist_ = min_valid_dist;
+        // max_valid_dist_ = max_valid_dist;
+        // min_valid_dist_ = min_valid_dist;
         mean_normal_ = mean_normal;
         has_valid_prediction_parameters_ = true;
     }
@@ -396,10 +476,28 @@ void landmark::replace(std::shared_ptr<landmark> lm, data::map_database* map_db)
 
     // 2. Merge lm with this
     unsigned int num_observable, num_observed;
+    std::map<unsigned int, std::vector<std::pair<unsigned int, float>>> match_scores;
     {
         std::lock_guard<std::mutex> lock1(mtx_observations_);
         num_observable = num_observable_;
         num_observed = num_observed_;
+        match_scores = match_scores_;
+    }
+
+    for (const auto& match_score : match_scores) {
+        const auto& keyfrm_1 = map_db->get_keyframe(match_score.first);
+        if (!keyfrm_1) {
+            continue;
+        }
+        for (const auto& keyfrm_id_score : match_score.second) {
+            const auto& keyfrm_2 = map_db->get_keyframe(keyfrm_id_score.first);
+            if (!keyfrm_2) {
+                continue;
+            }
+            if (!lm->is_observed_in_keyframe(keyfrm_1) || !lm->is_observed_in_keyframe(keyfrm_2)) {
+                lm->add_match_score(keyfrm_1, keyfrm_2, keyfrm_id_score.second);
+            }
+        }
     }
 
     for (const auto& keyfrm_and_idx : observations) {

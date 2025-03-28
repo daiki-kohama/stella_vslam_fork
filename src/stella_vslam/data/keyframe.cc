@@ -12,6 +12,8 @@
 #include "stella_vslam/feature/orb_params.h"
 #include "stella_vslam/util/converter.h"
 
+#include <iostream>
+
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -107,6 +109,7 @@ keyframe::keyframe(unsigned int id, const frame& frm)
       frm_obs_(frm.frm_obs_),
       bow_vec_(frm.bow_vec_), bow_feat_vec_(frm.bow_feat_vec_),
       markers_2d_(frm.markers_2d_),
+      image_(frm.image_),
       landmarks_(frm.get_landmarks()) {
     // set pose parameters (pose_wc_, trans_wc_) using frm.pose_cw_
     set_pose_cw(frm.get_pose_cw());
@@ -117,13 +120,13 @@ keyframe::keyframe(unsigned int id, const frame& frm)
 keyframe::keyframe(const unsigned int id, const unsigned int src_frm_id, const double timestamp,
                    const Mat44_t& pose_cw, camera::base* camera,
                    const feature::orb_params* orb_params, const frame_observation& frm_obs,
-                   const bow_vector& bow_vec, const bow_feature_vector& bow_feat_vec,
+                   const bow_vector& bow_vec, const bow_feature_vector& bow_feat_vec, const cv::Mat& image,
                    std::unordered_map<unsigned int, marker2d> markers_2d)
     : id_(id), src_frm_id_(src_frm_id),
       timestamp_(timestamp), camera_(camera),
       orb_params_(orb_params), frm_obs_(frm_obs),
       bow_vec_(bow_vec), bow_feat_vec_(bow_feat_vec),
-      markers_2d_(markers_2d),
+      markers_2d_(markers_2d), image_(image),
       landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.undist_keypts_.size(), nullptr)) {
     // set pose parameters (pose_wc_, trans_wc_) using pose_cw_
     set_pose_cw(pose_cw);
@@ -139,6 +142,7 @@ keyframe::keyframe(const unsigned int id, const unsigned int src_frm_id, const d
 }
 
 keyframe::~keyframe() {
+    spdlog::debug("destruct keyframe: {}", id_);
     SPDLOG_TRACE("keyframe::~keyframe: {}", id_);
 }
 
@@ -153,13 +157,13 @@ std::shared_ptr<keyframe> keyframe::make_keyframe(
     const unsigned int id, const unsigned int src_frm_id, const double timestamp,
     const Mat44_t& pose_cw, camera::base* camera,
     const feature::orb_params* orb_params, const frame_observation& frm_obs,
-    const bow_vector& bow_vec, const bow_feature_vector& bow_feat_vec,
+    const bow_vector& bow_vec, const bow_feature_vector& bow_feat_vec, const cv::Mat& image,
     std::unordered_map<unsigned int, marker2d> markers_2d) {
     auto ptr = std::allocate_shared<keyframe>(
         Eigen::aligned_allocator<keyframe>(),
         id, src_frm_id, timestamp,
         pose_cw, camera, orb_params,
-        frm_obs, bow_vec, bow_feat_vec, markers_2d);
+        frm_obs, bow_vec, bow_feat_vec, image, markers_2d);
     // covisibility graph node (connections is not assigned yet)
     ptr->graph_node_ = stella_vslam::make_unique<graph_node>(ptr);
     return ptr;
@@ -248,9 +252,10 @@ std::shared_ptr<keyframe> keyframe::from_stmt(sqlite3_stmt* stmt,
         data::bow_vocabulary_util::compute_bow(bow_vocab, descriptors, bow_vec, bow_feat_vec);
     }
     // NOTE: 3D marker info will be filled in later based on loaded markers
+    cv::Mat image = cv::Mat();
     auto keyfrm = data::keyframe::make_keyframe(
         id + next_keyframe_id, src_frm_id, timestamp, pose_cw, camera, orb_params,
-        frm_obs, bow_vec, bow_feat_vec, markers_2d);
+        frm_obs, bow_vec, bow_feat_vec, image, markers_2d);
 
     return keyfrm;
 }
@@ -416,24 +421,35 @@ void keyframe::compute_bow(bow_vocabulary* bow_vocab) {
 
 void keyframe::add_landmark(std::shared_ptr<landmark> lm, const unsigned int idx) {
     std::lock_guard<std::mutex> lock(mtx_observations_);
+    if (id_ == 4 && lm->id_ == 20595) {
+        std::cout << "keyframe.add_landmark: " << id_ << " " << idx << " " << lm->id_ << std::endl;
+    }
     landmarks_.at(idx) = lm;
 }
 
 void keyframe::erase_landmark_with_index(const unsigned int idx) {
     std::lock_guard<std::mutex> lock(mtx_observations_);
+    if (id_ == 4 && landmarks_.at(idx) && landmarks_.at(idx)->id_ == 20595) {
+        std::cout << "keyframe.erase_landmark_with_index: " << id_ << " " << idx << " " << landmarks_.at(idx)->id_ << std::endl;
+    }
     landmarks_.at(idx) = nullptr;
 }
 
 void keyframe::erase_landmark(const std::shared_ptr<landmark>& lm) {
     std::lock_guard<std::mutex> lock(mtx_observations_);
     int idx = lm->get_index_in_keyframe(shared_from_this());
+    if (id_ == 4 && lm->id_ == 20595) {
+        std::cout << "keyframe.erase_landmark: " << id_ << " " << idx << " " << lm->id_ << std::endl;
+    }
     if (0 <= idx) {
         landmarks_.at(static_cast<unsigned int>(idx)) = nullptr;
     }
 }
 
-void keyframe::update_landmarks() {
+void keyframe::update_landmarks(data::frame& frm,
+                                std::unordered_map<unsigned int, std::shared_ptr<data::keyframe>>& keyfrm_src_frm_id_map) {
     std::lock_guard<std::mutex> lock(mtx_observations_);
+    std::cout << "IN keyframe::update_landmarks: " << id_ << std::endl;
     for (unsigned int idx = 0; idx < landmarks_.size(); ++idx) {
         auto lm = landmarks_.at(idx);
         if (!lm) {
@@ -445,6 +461,16 @@ void keyframe::update_landmarks() {
 
         // update connection
         lm->add_observation(shared_from_this(), idx);
+        auto match_scores = frm.get_match_score(idx);
+        for (unsigned int i = 0; i < match_scores.size(); ++i) {
+            const auto frm_id = match_scores.at(i).first;
+            const auto score = match_scores.at(i).second;
+            const auto keyfrm_tmp = keyfrm_src_frm_id_map[frm_id];
+            if (!keyfrm_tmp) {
+                continue;
+            }
+            lm->add_match_score(shared_from_this(), keyfrm_tmp, score);
+        }
         // update geometry
         lm->update_mean_normal_and_obs_scale_variance();
         lm->compute_descriptor();
@@ -628,6 +654,7 @@ void keyframe::prepare_for_erasing(map_database* map_db, bow_database* bow_db) {
 
     // 1. raise the flag which indicates it has been erased
 
+    spdlog::debug("keyframe::prepare_for_erasing {}", id_);
     SPDLOG_TRACE("keyframe::prepare_for_erasing {}", id_);
     will_be_erased_ = true;
 
