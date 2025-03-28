@@ -1,5 +1,6 @@
 #!/bin/sh
 
+mkdir -p /stella_vslam_ws/build && \
 cd /stella_vslam_ws/build && \
 cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
