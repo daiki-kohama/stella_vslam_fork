@@ -42,6 +42,7 @@ RUN set -x && \
     libyaml-cpp-dev \
     sqlite3 \
     libsqlite3-dev \
+    python3.10-dev \
     python3.10-venv \
     python3-pybind11 && \
   : "remove cache" && \
