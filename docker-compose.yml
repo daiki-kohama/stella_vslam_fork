@@ -13,6 +13,7 @@ services:
       - "${MEDIA_PATH}:/media"
       - "${VOCAB_PATH}:/vocab:ro"
       - "${CONFIGS_PATH}:/configs"
+      - "${ONNX_MODEL_PATH}:/onnx_models"
       - ".:/stella_vslam_ws"
       - "./build_in_docker.sh:/stella_vslam_examples/build/build_in_docker.sh"
       - "/tmp/.X11-unix:/tmp/.X11-unix:ro"
