@@ -20,10 +20,10 @@ frame::frame(unsigned int frame_id, const double timestamp, camera::base* camera
     : id_(frame_id), timestamp_(timestamp), camera_(camera), orb_params_(orb_params), frm_obs_(frm_obs),
       markers_2d_(markers_2d), image_(image),
       // Initialize association with 3D points
-      landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.undist_keypts_.size(), nullptr)) {
-    match_scores_.resize(frm_obs_.lg_keypts_.size());
+      landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.dl_keypts_.size(), nullptr)) {
+    match_scores_.resize(frm_obs_.dl_keypts_.size());
     cv::Mat image_with_keypoints = image.clone();
-    for (const auto& keypt : frm_obs_.lg_keypts_) {
+    for (const auto& keypt : frm_obs_.dl_keypts_) {
         cv::circle(image_with_keypoints, keypt, 2, cv::Scalar(255, 0, 0), 2);
     }
     cv::imwrite("keypoints_" + std::to_string(id_) + ".jpg", image_with_keypoints);
@@ -140,13 +140,13 @@ void frame::set_landmarks(const std::vector<std::shared_ptr<landmark>>& landmark
     }
 }
 
-void frame::add_match_score(const unsigned int ref_frm_id, const std::vector<double>& match_score) {
+void frame::add_match_score(const unsigned int ref_frm_id, const std::vector<float>& match_score) {
     for (unsigned int idx = 0; idx < match_score.size(); ++idx) {
         match_scores_.at(idx).emplace_back(std::make_pair(ref_frm_id, match_score.at(idx)));
     }
 }
 
-std::vector<std::pair<unsigned int, double>> frame::get_match_score(const unsigned int idx) {
+std::vector<std::pair<unsigned int, float>> frame::get_match_score(const unsigned int idx) {
     return match_scores_.at(idx);
 }
 

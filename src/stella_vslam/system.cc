@@ -38,7 +38,8 @@
 
 namespace stella_vslam {
 
-system::system(const std::shared_ptr<config>& cfg, const std::string& vocab_file_path)
+system::system(const std::shared_ptr<config>& cfg, const std::string& vocab_file_path,
+               const std::string& extractor_model_path, const std::string& matcher_model_path, const bool use_cuda)
     : cfg_(cfg) {
     spdlog::debug("CONSTRUCT: system");
     print_info();
@@ -85,13 +86,17 @@ system::system(const std::shared_ptr<config>& cfg, const std::string& vocab_file
     }
     auto mask_rectangles = util::get_rectangles(preprocessing_params["mask_rectangles"]);
 
-    // LightGlue
-    lightglue_ = new feature::lightglue(mask_rectangles);
+    // deep learning based feature extractor
+    spdlog::info("loading deep learning based feature extractor: {}", extractor_model_path);
+    dl_extractor_ = new feature::dl_extractor(extractor_model_path, mask_rectangles, use_cuda);
+    // LightGlue matcher
+    spdlog::info("loading LightGlue matcher: {}", matcher_model_path);
+    lg_matcher_ = new feature::lg_matcher(matcher_model_path, use_cuda);
 
     // tracking module
-    tracker_ = new tracking_module(cfg_, camera_, map_db_, bow_vocab_, bow_db_, lightglue_);
+    tracker_ = new tracking_module(cfg_, camera_, map_db_, bow_vocab_, bow_db_, lg_matcher_);
     // mapping module
-    mapper_ = new mapping_module(util::yaml_optional_ref(cfg->yaml_node_, "Mapping"), map_db_, bow_db_, bow_vocab_, lightglue_);
+    mapper_ = new mapping_module(util::yaml_optional_ref(cfg->yaml_node_, "Mapping"), map_db_, bow_db_, bow_vocab_, lg_matcher_);
     // global optimization module
     if (bow_db_ && bow_vocab_) {
         global_optimizer_ = new global_optimization_module(map_db_, bow_db_, bow_vocab_, cfg_->yaml_node_, camera_->setup_type_ != camera::setup_type_t::Monocular);
@@ -169,8 +174,10 @@ system::~system() {
     extractor_left_ = nullptr;
     delete extractor_right_;
     extractor_right_ = nullptr;
-    delete lightglue_;
-    lightglue_ = nullptr;
+    delete dl_extractor_;
+    dl_extractor_ = nullptr;
+    delete lg_matcher_;
+    lg_matcher_ = nullptr;
 
     delete marker_detector_;
     marker_detector_ = nullptr;
@@ -385,29 +392,29 @@ data::frame system::create_monocular_frame(const cv::Mat& img, const double time
 
     data::frame_observation frm_obs;
 
-    // Extract ORB feature
-    keypts_.clear();
-    extractor_left_->extract(img_gray, mask, keypts_, frm_obs.descriptors_);
-    if (keypts_.empty()) {
-        spdlog::warn("preprocess: cannot extract any keypoints");
+    // Extract Deep Learning feature
+    dl_keypts_.clear();
+    std::vector<cv::_InputArray> imgs = {img};
+    std::vector<std::vector<cv::Point2f>> imgs_dl_keypts;
+    std::vector<std::vector<std::vector<float>>> imgs_dl_descs;
+    std::vector<std::unordered_set<unsigned int>> imgs_valid_indices;
+    dl_extractor_->run(imgs, mask, imgs_dl_keypts, imgs_dl_descs, imgs_valid_indices);
+    if (!imgs_dl_keypts.empty()) {
+        dl_keypts_ = imgs_dl_keypts.at(0);
+        frm_obs.dl_descriptors_ = imgs_dl_descs.at(0);
+        frm_obs.dl_valid_indices_ = imgs_valid_indices.at(0);
     }
+    std::cout << "dl_keypts_.size(): " << dl_keypts_.size() << std::endl;
 
-    lg_keypts_.clear();
-    lightglue_->feature_extract(img, mask, lg_keypts_, frm_obs.lg_descriptors_);
-    std::cout << "lg_keypts_.size(): " << lg_keypts_.size() << std::endl;
-
-    // Undistort keypoints
-    camera_->undistort_keypoints(keypts_, frm_obs.undist_keypts_);
-    frm_obs.lg_keypts_ = lg_keypts_;
+    frm_obs.dl_keypts_ = dl_keypts_;
 
     // Convert to bearing vector
-    camera_->convert_keypoints_to_bearings(frm_obs.undist_keypts_, frm_obs.bearings_);
-    camera_->convert_lg_keypoints_to_bearings(frm_obs.lg_keypts_, frm_obs.lg_bearings_);
+    camera_->convert_lg_keypoints_to_bearings(frm_obs.dl_keypts_, frm_obs.dl_bearings_);
 
     // Assign all the keypoints into grid
     frm_obs.num_grid_cols_ = num_grid_cols_;
     frm_obs.num_grid_rows_ = num_grid_rows_;
-    data::assign_lg_keypoints_to_grid(camera_, frm_obs.lg_keypts_, frm_obs.keypt_indices_in_cells_,
+    data::assign_lg_keypoints_to_grid(camera_, frm_obs.dl_keypts_, frm_obs.keypt_indices_in_cells_,
                                       frm_obs.num_grid_cols_, frm_obs.num_grid_rows_);
 
     // Detect marker
@@ -605,7 +612,7 @@ std::shared_ptr<Mat44_t> system::feed_frame(const data::frame& frm, const cv::Ma
     frame_publisher_->update(tracker_->curr_frm_.get_landmarks(),
                              !mapper_->is_paused(),
                              tracker_->tracking_state_,
-                             keypts_,
+                             dl_keypts_,
                              mkrs2d,
                              img,
                              tracking_time_elapsed_ms,

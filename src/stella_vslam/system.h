@@ -34,7 +34,8 @@ class bow_database;
 
 namespace feature {
 class orb_extractor;
-class lightglue;
+class dl_extractor;
+class lg_matcher;
 struct orb_params;
 } // namespace feature
 
@@ -54,7 +55,8 @@ class map_database_io_base;
 class system {
 public:
     //! Constructor
-    system(const std::shared_ptr<config>& cfg, const std::string& vocab_file_path);
+    system(const std::shared_ptr<config>& cfg, const std::string& vocab_file_path,
+           const std::string& extractor_model_path, const std::string& matcher_model_path, const bool use_cuda = false);
 
     //! Destructor
     ~system();
@@ -248,8 +250,10 @@ private:
     //! ORB extractor only when used in initializing
     feature::orb_extractor* ini_extractor_left_ = nullptr;
 
-    //! LightGlue
-    feature::lightglue* lightglue_ = nullptr;
+    //! deep learning based feature extractor
+    feature::dl_extractor* dl_extractor_ = nullptr;
+    //! LightGlue matcher
+    feature::lg_matcher* lg_matcher_ = nullptr;
 
     //! number of columns of grid to accelerate reprojection matching
     unsigned int num_grid_cols_ = 64;
@@ -290,7 +294,7 @@ private:
     std::vector<cv::KeyPoint> keypts_;
 
     //! Temporary variables for lg_keypts
-    std::vector<cv::Point2f> lg_keypts_;
+    std::vector<cv::Point2f> dl_keypts_;
 };
 
 } // namespace stella_vslam

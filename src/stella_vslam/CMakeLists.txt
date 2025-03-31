@@ -87,13 +87,25 @@ else()
     set(USE_CUDA_EFFICIENT_DESCRIPTORS OFF)
 endif()
 
-# LightGlue
-set(USE_LIGHTGLUE OFF CACHE BOOL "Enable LightGlue")
+# ONNX Runtime
+set(USE_ONNX_RUNTIME OFF CACHE BOOL "Enable ONNX Runtime")
 
-if(USE_LIGHTGLUE)
-    set(Python3_EXECUTABLE "/LightGlue/venv/bin/python3.10")
-    find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-    find_package(pybind11 REQUIRED)
+if(USE_ONNX_RUNTIME)
+    if(NOT ONNXRUNTIME_DIR)
+        set(ONNXRUNTIME_DIR $ENV{ONNXRUNTIME_DIR})
+    endif()
+
+    if(NOT ONNXRUNTIME_DIR)
+        message(FATAL_ERROR "Please set ONNXRUNTIME_DIR to the directory containing ONNX Runtime")
+    endif()
+
+    message(STATUS "ONNX Runtime: ENABLED (Found in ${ONNXRUNTIME_DIR})")
+
+    include_directories(${ONNXRUNTIME_DIR}/include)
+    link_directories(${ONNXRUNTIME_DIR}/lib)
+
+    # ONNX runtime for cuda
+    set(USE_ONNX_RUNTIME_CUDA OFF CACHE BOOL "Enable ONNX Runtime for CUDA")
 endif()
 
 # ----- Create stella_vslam library -----
@@ -114,7 +126,8 @@ add_library(${PROJECT_NAME}
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME stella_vslam
     ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib
-    LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
+    LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib
+    INSTALL_RPATH ${ONNXRUNTIME_DIR}/lib)
 
 # ----- Compile configuration -----
 
@@ -123,6 +136,11 @@ if(USE_CUDA_EFFICIENT_DESCRIPTORS)
     find_package(OpenCV REQUIRED core features2d cudev cudafilters cudaimgproc cudawarping)
     find_package(CUDAToolkit REQUIRED)
     target_compile_definitions(${PROJECT_NAME} PUBLIC USE_CUDA_EFFICIENT_DESCRIPTORS)
+endif()
+
+# ONNX Runtime for CUDA
+if(USE_ONNX_RUNTIME_CUDA)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_ONNX_RUNTIME_CUDA)
 endif()
 
 # gtsam
@@ -235,7 +253,12 @@ target_include_directories(${PROJECT_NAME}
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/>"
     "$<INSTALL_INTERFACE:include/stella_vslam/3rd/json/include>"
     "$<$<NOT:$<BOOL:${spdlog_FOUND}>>:$<INSTALL_INTERFACE:include/stella_vslam/3rd/spdlog/include>>"
-    "$<INSTALL_INTERFACE:include/>")
+    "$<INSTALL_INTERFACE:include/>"
+    "$<$<BOOL:${USE_ONNX_RUNTIME}>:${ONNXRUNTIME_DIR}/include>")
+
+if(USE_ONNX_RUNTIME AND ONNXRUNTIME_DIR)
+    target_link_directories(${PROJECT_NAME} PUBLIC ${ONNXRUNTIME_DIR}/lib)
+endif()
 
 # Link to required libraries
 target_link_libraries(${PROJECT_NAME}
@@ -264,10 +287,10 @@ target_link_libraries(${PROJECT_NAME}
     ${BoW_LIBRARY}
     "$<$<BOOL:${spdlog_FOUND}>:spdlog::spdlog>"
     "$<$<BOOL:${USE_CUDA_EFFICIENT_DESCRIPTORS}>:${cuda_efficient_features_LIBRARY};opencv_cudafilters;opencv_cudawarping>"
+    "$<$<BOOL:${USE_ONNX_RUNTIME}>:onnxruntime>"
     PRIVATE
     ${LAPACK_LIBRARIES}
-    "$<$<BOOL:${USE_CUDA_EFFICIENT_DESCRIPTORS}>:CUDA::cudart;CUDA::cublas>"
-    "$<$<BOOL:${USE_LIGHTGLUE}>:pybind11::embed;Python3::Python>")
+    "$<$<BOOL:${USE_CUDA_EFFICIENT_DESCRIPTORS}>:CUDA::cudart;CUDA::cublas>")
 
 # ----- Install configuration -----
 set(STELLA_VSLAM_INCLUDE_INSTALL_DIR ${INCLUDES_DESTINATION}/stella_vslam)

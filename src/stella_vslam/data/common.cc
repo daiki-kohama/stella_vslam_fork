@@ -145,7 +145,7 @@ void assign_lg_keypoints_to_grid(const camera::base* camera, const std::vector<c
 std::vector<unsigned int> get_keypoints_in_cell(const camera::base* camera, const data::frame_observation& frm_obs,
                                                 const float ref_x, const float ref_y, const float margin,
                                                 const int min_level, const int max_level) {
-    return get_keypoints_in_cell(camera, frm_obs.lg_keypts_, frm_obs.keypt_indices_in_cells_,
+    return get_keypoints_in_cell(camera, frm_obs.dl_keypts_, frm_obs.keypt_indices_in_cells_,
                                  ref_x, ref_y, margin,
                                  frm_obs.num_grid_cols_, frm_obs.num_grid_rows_,
                                  min_level, max_level);

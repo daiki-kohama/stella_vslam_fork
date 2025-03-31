@@ -108,7 +108,7 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
             }
 
             const auto keyfrm_vtx = keyfrm_vtx_container.get_vertex(keyfrm);
-            const auto& lg_keypt = keyfrm->frm_obs_.lg_keypts_.at(idx);
+            const auto& lg_keypt = keyfrm->frm_obs_.dl_keypts_.at(idx);
             const float x_right = keyfrm->frm_obs_.stereo_x_right_.empty() ? -1.0f : keyfrm->frm_obs_.stereo_x_right_.at(idx);
             const float inv_sigma_sq = lm->get_keyfrm_avg_score(keyfrm) * lm->get_keyfrm_avg_score(keyfrm);
             const auto sqrt_chi_sq = (keyfrm->camera_->setup_type_ == camera::setup_type_t::Monocular)

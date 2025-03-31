@@ -22,8 +22,8 @@ namespace module {
 
 initializer::initializer(data::map_database* map_db,
                          const YAML::Node& yaml_node,
-                         const feature::lightglue* lightglue)
-    : map_db_(map_db), lightglue_(lightglue),
+                         feature::lg_matcher* lg_matcher)
+    : map_db_(map_db), lg_matcher_(lg_matcher),
       num_ransac_iters_(yaml_node["num_ransac_iterations"].as<unsigned int>(100)),
       min_num_valid_pts_(yaml_node["min_num_valid_pts"].as<unsigned int>(50)),
       min_num_triangulated_pts_(yaml_node["min_num_triangulated_pts"].as<unsigned int>(50)),
@@ -118,9 +118,9 @@ void initializer::create_initializer(data::frame& curr_frm) {
     init_frm_ = data::frame(curr_frm);
 
     // initialize the previously matched coordinates
-    prev_matched_coords_.resize(init_frm_.frm_obs_.lg_keypts_.size());
-    for (unsigned int i = 0; i < init_frm_.frm_obs_.lg_keypts_.size(); ++i) {
-        prev_matched_coords_.at(i) = init_frm_.frm_obs_.lg_keypts_.at(i);
+    prev_matched_coords_.resize(init_frm_.frm_obs_.dl_keypts_.size());
+    for (unsigned int i = 0; i < init_frm_.frm_obs_.dl_keypts_.size(); ++i) {
+        prev_matched_coords_.at(i) = init_frm_.frm_obs_.dl_keypts_.at(i);
     }
 
     // initialize matchings (init_idx -> curr_idx)
@@ -153,8 +153,8 @@ void initializer::create_initializer(data::frame& curr_frm) {
 bool initializer::try_initialize_for_monocular(data::frame& curr_frm) {
     assert(state_ == initializer_state_t::Initializing);
 
-    match::lightglue lg_matcher(0.9, init_frm_.camera_->model_type_ != camera::model_type_t::Equirectangular, lightglue_);
-    const auto num_matches_lg = lg_matcher.match_frame_and_frame(init_frm_, curr_frm, prev_matched_coords_, init_matches_, init_match_scores_);
+    match::lightglue lg_matching(0.9, init_frm_.camera_->model_type_ != camera::model_type_t::Equirectangular, lg_matcher_);
+    const auto num_matches_lg = lg_matching.match_frame_and_frame(init_frm_, curr_frm, prev_matched_coords_, init_matches_, init_match_scores_);
 
     std::cout << "LightGlue matched: " << num_matches_lg << std::endl;
 
@@ -204,6 +204,7 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
 
     // create initial keyframes
     auto init_keyfrm = data::keyframe::make_keyframe(map_db_->next_keyframe_id_++, init_frm_);
+    std::cout << "init_keyfrm->landmarks_.size(): " << init_keyfrm->get_landmarks().size() << std::endl;
     auto curr_keyfrm = data::keyframe::make_keyframe(map_db_->next_keyframe_id_++, curr_frm);
     curr_keyfrm->graph_node_->set_spanning_parent(init_keyfrm);
     init_keyfrm->graph_node_->add_spanning_child(curr_keyfrm);
@@ -244,7 +245,7 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
         lm->add_match_score(init_keyfrm, curr_keyfrm, init_match_scores_.at(init_idx));
 
         // update the descriptor
-        lm->compute_descriptor();
+        // lm->compute_descriptor();
         // update the geometry
         lm->update_mean_normal_and_obs_scale_variance();
 

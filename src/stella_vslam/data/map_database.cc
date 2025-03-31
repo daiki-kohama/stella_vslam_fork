@@ -348,9 +348,9 @@ void map_database::from_json(camera_database* cam_db, orb_params_database* orb_p
         if (!lm->has_valid_prediction_parameters()) {
             lm->update_mean_normal_and_obs_scale_variance();
         }
-        if (!lm->has_representative_descriptor()) {
-            lm->compute_descriptor();
-        }
+        // if (!lm->has_representative_descriptor()) {
+        //     lm->compute_descriptor();
+        // }
     }
 }
 
@@ -557,9 +557,9 @@ bool map_database::from_db(sqlite3* db,
         if (!lm->has_valid_prediction_parameters()) {
             lm->update_mean_normal_and_obs_scale_variance();
         }
-        if (!lm->has_representative_descriptor()) {
-            lm->compute_descriptor();
-        }
+        // if (!lm->has_representative_descriptor()) {
+        //     lm->compute_descriptor();
+        // }
     }
     return ok;
 }

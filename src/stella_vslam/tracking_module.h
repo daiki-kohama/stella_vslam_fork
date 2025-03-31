@@ -28,7 +28,7 @@ class bow_database;
 } // namespace data
 
 namespace feature {
-class lightglue;
+class lg_matcher;
 }
 
 // tracker state
@@ -52,7 +52,7 @@ public:
 
     //! Constructor
     tracking_module(const std::shared_ptr<config>& cfg, camera::base* camera, data::map_database* map_db,
-                    data::bow_vocabulary* bow_vocab, data::bow_database* bow_db, const feature::lightglue* lightglue);
+                    data::bow_vocabulary* bow_vocab, data::bow_database* bow_db, feature::lg_matcher* lg_matcher);
 
     //! Destructor
     ~tracking_module();
@@ -119,8 +119,8 @@ public:
     //! yaml node
     YAML::Node tracking_yaml_;
 
-    //! LightGlue
-    const feature::lightglue* lightglue_;
+    //! LightGlue matcher
+    feature::lg_matcher* lg_matcher_;
 
     //! closest keyframes thresholds (by distance and angle) to relocalize with when updating by pose
     double reloc_distance_threshold_ = 0.2;

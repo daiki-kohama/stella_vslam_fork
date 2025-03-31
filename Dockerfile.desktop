@@ -42,9 +42,6 @@ RUN set -x && \
     libyaml-cpp-dev \
     sqlite3 \
     libsqlite3-dev && \
-    # python3.10-dev \
-    # python3.10-venv \
-    # python3-pybind11 && \
   : "remove cache" && \
   apt-get autoremove -y -qq && \
   rm -rf /var/lib/apt/lists/*
@@ -183,25 +180,16 @@ RUN set -x && \
   rm -rf *
 ENV Pangolin_DIR=${CMAKE_INSTALL_PREFIX}/lib/cmake/Pangolin
 
-# LightGlue
-# ARG LIGHTGLUE_COMMIT=250f95463439dd2f7606f126feccdb64f67bcd9c
-# WORKDIR /
-# RUN set -x && \
-#   git clone https://github.com/daiki-kohama/LightGlue.git && \
-#   cd LightGlue && \
-#   git checkout ${LIGHTGLUE_COMMIT} && \
-#   python3 -m venv venv && \
-#   . venv/bin/activate && \
-#   pip install -e .
-
 # ONNX
 ARG ONNX_VERSION=1.21.0
+ARG ARCHITECUTRE=x64-gpu
 WORKDIR /
 RUN set -x && \
-  wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-x64-gpu-${ONNX_VERSION}.tgz && \
-  tar xf onnxruntime-linux-x64-gpu-${ONNX_VERSION}.tgz && \
-  rm -rf onnxruntime-linux-x64-gpu-${ONNX_VERSION}.tgz
-ENV ONNXRUNTIME_DIR=/onnxruntime-linux-x64-gpu-${ONNX_VERSION}
+  wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}.tgz && \
+  tar xf onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}.tgz && \
+  rm -rf onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}.tgz && \
+  export LD_LIBRARY_PATH=/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}/lib:${LD_LIBRARY_PATH}
+ENV ONNXRUNTIME_DIR=/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}
 
 # backward-cpp
 ARG BACKWARD_CPP_COMMIT=5ffb2c879ebdbea3bdb8477c671e32b1c984beaa
@@ -229,8 +217,7 @@ RUN set -x && \
   cd build && \
   cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DUSE_LIGHTGLUE=ON \
-    -DUSE_LIGHTGLIE_ONNX=ON \
+    -DUSE_ONNX_RUNTIME=ON \
     .. && \
   make -j${NUM_THREADS} && \
   make install && \
@@ -255,10 +242,10 @@ RUN set -x && \
   cd /tmp && \
   rm -rf *
 
-ARG EXAMPLES_COMMIT=3606f68c9c3fb05a838e992230cb4a17106a7c41
+ARG EXAMPLES_COMMIT=618df53bdfeb22ccca55fc19b3369d78b8061084
 WORKDIR /
 RUN set -x && \
-  git clone https://github.com/stella-cv/stella_vslam_examples.git && \
+  git clone https://github.com/daiki-kohama/stella_vslam_examples && \
   cd stella_vslam_examples && \
   git checkout -q ${EXAMPLES_COMMIT} && \
   git submodule update --init --recursive && \

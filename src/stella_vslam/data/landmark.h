@@ -98,12 +98,9 @@ public:
     //! get average score of the specified keyframe
     float get_keyfrm_avg_score(const std::shared_ptr<keyframe>& keyfrm) const;
 
-    using lg_keypoints_t = std::map<std::shared_ptr<keyframe>, cv::Point2f, id_less<std::shared_ptr<keyframe>>>;
-    using lg_descriptors_t = std::map<std::shared_ptr<keyframe>, std::vector<double>, id_less<std::shared_ptr<keyframe>>>;
-    //! get LightGlue keypoints for each keyframe
-    lg_keypoints_t get_lg_keypoints() const;
-    //! get LightGlue descriptors for each keyframe
-    lg_descriptors_t get_lg_descriptors() const;
+    using dl_keypoints_t = std::map<std::shared_ptr<keyframe>, unsigned int, id_less<std::shared_ptr<keyframe>>>;
+    //! get keypoint index for each keyframe
+    dl_keypoints_t get_dl_keypoints_idx() const;
 
     //! true if the landmark has representative descriptor
     bool has_representative_descriptor() const;

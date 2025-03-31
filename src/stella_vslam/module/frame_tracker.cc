@@ -135,9 +135,9 @@ bool frame_tracker::robust_match_based_track(data::frame& curr_frm, const data::
     }
 }
 
-bool frame_tracker::lightglue_frame_match_based_track(data::frame& curr_frm, const data::frame& last_frm, const Mat44_t& velocity, const feature::lightglue* lightglue) const {
+bool frame_tracker::lightglue_frame_match_based_track(data::frame& curr_frm, const data::frame& last_frm, const Mat44_t& velocity, feature::lg_matcher* lg_matcher) const {
     // match::projection projection_matcher(0.9, camera_->model_type_ != camera::model_type_t::Equirectangular);
-    match::lightglue lg_matcher(0.8, false, lightglue);
+    match::lightglue lg_matching(0.8, false, lg_matcher);
 
     // Set the initial pose by using the motion model
     curr_frm.set_pose_cw(velocity * last_frm.get_pose_cw());
@@ -146,14 +146,14 @@ bool frame_tracker::lightglue_frame_match_based_track(data::frame& curr_frm, con
     curr_frm.erase_landmarks();
 
     // Reproject the 3D points observed in the last frame and find 2D-3D matches
-    std::vector<double> matched_scores_in_curr;
-    auto num_matches = lg_matcher.match_current_and_last_frames(curr_frm, last_frm, margin_, matched_scores_in_curr);
+    std::vector<float> matched_scores_in_curr;
+    auto num_matches = lg_matching.match_current_and_last_frames(curr_frm, last_frm, margin_, matched_scores_in_curr);
 
     if (num_matches < num_matches_thr_) {
         // Increment the margin, and search again
         curr_frm.erase_landmarks();
         matched_scores_in_curr.clear();
-        num_matches = lg_matcher.match_current_and_last_frames(curr_frm, last_frm, 2 * margin_, matched_scores_in_curr);
+        num_matches = lg_matching.match_current_and_last_frames(curr_frm, last_frm, 2 * margin_, matched_scores_in_curr);
     }
 
     if (num_matches < num_matches_thr_) {
@@ -181,16 +181,16 @@ bool frame_tracker::lightglue_frame_match_based_track(data::frame& curr_frm, con
 
 bool frame_tracker::lightglue_keyframe_match_based_track(data::frame& curr_frm, const data::frame& last_frm,
                                                          const std::shared_ptr<data::keyframe>& ref_keyfrm,
-                                                         const feature::lightglue* lightglue) const {
-    match::lightglue lg_matcher(0.8, true, lightglue);
+                                                         feature::lg_matcher* lg_matcher) const {
+    match::lightglue lg_matching(0.8, true, lg_matcher);
 
     // Search 2D-2D matches between the ref keyframes and the current frame
     // to acquire 2D-3D matches between the frame keypoints and 3D points observed in the ref keyframe
     std::vector<std::shared_ptr<data::landmark>> matched_lms_in_curr;
-    std::vector<double> matched_scores_in_curr;
-    auto num_matches = lg_matcher.match_frame_and_keyframe(curr_frm, ref_keyfrm, matched_lms_in_curr, matched_scores_in_curr, use_fixed_seed_);
+    std::vector<float> matched_scores_in_curr;
+    auto num_matches = lg_matching.match_frame_and_keyframe(curr_frm, ref_keyfrm, matched_lms_in_curr, matched_scores_in_curr, use_fixed_seed_);
 
-    std::cout << "lg_matcher.match_frame_and_keyframe(curr_frm.id_: " << curr_frm.id_ << ", ref_keyfrm.id_: " << ref_keyfrm->id_ << ", num_matches: " << num_matches << std::endl;
+    std::cout << "lg_matching.match_frame_and_keyframe(curr_frm.id_: " << curr_frm.id_ << ", ref_keyfrm.id_: " << ref_keyfrm->id_ << ", num_matches: " << num_matches << std::endl;
 
     {
         cv::Mat img = curr_frm.image_.clone();
@@ -198,8 +198,8 @@ bool frame_tracker::lightglue_keyframe_match_based_track(data::frame& curr_frm, 
             if (!matched_lms_in_curr.at(idx)) {
                 continue;
             }
-            cv::circle(img, curr_frm.frm_obs_.lg_keypts_.at(idx), 2, cv::Scalar(255, 0, 0), 2);
-            cv::putText(img, std::to_string(matched_scores_in_curr.at(idx)), curr_frm.frm_obs_.lg_keypts_.at(idx), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1);
+            cv::circle(img, curr_frm.frm_obs_.dl_keypts_.at(idx), 2, cv::Scalar(255, 0, 0), 2);
+            cv::putText(img, std::to_string(matched_scores_in_curr.at(idx)), curr_frm.frm_obs_.dl_keypts_.at(idx), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1);
         }
         cv::imwrite("lg_match_track_lms_" + std::to_string(curr_frm.id_) + ".jpg", img);
     }
@@ -255,7 +255,7 @@ bool frame_tracker::lightglue_keyframe_match_based_track(data::frame& curr_frm, 
 unsigned int frame_tracker::discard_outliers(const std::vector<bool>& outlier_flags, data::frame& curr_frm) const {
     unsigned int num_valid_matches = 0;
 
-    for (unsigned int idx = 0; idx < curr_frm.frm_obs_.lg_keypts_.size(); ++idx) {
+    for (unsigned int idx = 0; idx < curr_frm.frm_obs_.dl_keypts_.size(); ++idx) {
         if (curr_frm.get_landmark(idx) == nullptr) {
             continue;
         }

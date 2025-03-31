@@ -225,9 +225,9 @@ float landmark::get_keyfrm_avg_score(const std::shared_ptr<keyframe>& keyfrm) co
     return avg_score;
 }
 
-landmark::lg_keypoints_t landmark::get_lg_keypoints() const {
+landmark::dl_keypoints_t landmark::get_dl_keypoints_idx() const {
     std::lock_guard<std::mutex> lock(mtx_observations_);
-    lg_keypoints_t lg_keypoints;
+    dl_keypoints_t dl_keypoints;
     for (const auto& observation : observations_) {
         auto keyfrm = observation.first.lock();
         const auto idx = observation.second;
@@ -235,26 +235,10 @@ landmark::lg_keypoints_t landmark::get_lg_keypoints() const {
             continue;
         }
         if (!keyfrm->will_be_erased()) {
-            lg_keypoints[keyfrm] = keyfrm->frm_obs_.lg_keypts_.at(idx);
+            dl_keypoints[keyfrm] = idx;
         }
     }
-    return lg_keypoints;
-}
-
-landmark::lg_descriptors_t landmark::get_lg_descriptors() const {
-    std::lock_guard<std::mutex> lock(mtx_observations_);
-    lg_descriptors_t lg_descriptors;
-    for (const auto& observation : observations_) {
-        auto keyfrm = observation.first.lock();
-        const auto idx = observation.second;
-        if (!keyfrm) {
-            continue;
-        }
-        if (!keyfrm->will_be_erased()) {
-            lg_descriptors[keyfrm] = keyfrm->frm_obs_.lg_descriptors_.at(idx);
-        }
-    }
-    return lg_descriptors;
+    return dl_keypoints;
 }
 
 bool landmark::has_representative_descriptor() const {

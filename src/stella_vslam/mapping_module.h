@@ -32,13 +32,14 @@ class map_database;
 } // namespace data
 
 namespace feature {
-class lightglue;
+class lg_matcher;
 }
 
 class mapping_module {
 public:
     //! Constructor
-    mapping_module(const YAML::Node& yaml_node, data::map_database* map_db, data::bow_database* bow_db, data::bow_vocabulary* bow_vocab, feature::lightglue* lightglue);
+    mapping_module(const YAML::Node& yaml_node, data::map_database* map_db, data::bow_database* bow_db,
+                   data::bow_vocabulary* bow_vocab, feature::lg_matcher* lg_matcher);
 
     //! Destructor
     ~mapping_module();
@@ -104,8 +105,8 @@ public:
     //! (NOTE: this function does not wait for abort)
     void abort_local_BA();
 
-    //! LightGlue
-    const feature::lightglue* lightglue_;
+    //! LightGlue matcher
+    feature::lg_matcher* lg_matcher_;
 
 private:
     //-----------------------------------------
@@ -122,7 +123,7 @@ private:
 
     //! Triangulate landmarks between the keyframes 1 and 2
     void triangulate_with_two_keyframes(const std::shared_ptr<data::keyframe>& keyfrm_1, const std::shared_ptr<data::keyframe>& keyfrm_2,
-                                        const std::vector<std::pair<unsigned int, unsigned int>>& matches, const std::vector<double>& match_scores);
+                                        const std::vector<std::pair<unsigned int, unsigned int>>& matches, const std::vector<float>& match_scores);
 
     //! Update the new keyframe
     void update_new_keyframe();

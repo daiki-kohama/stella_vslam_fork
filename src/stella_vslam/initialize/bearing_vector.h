@@ -53,17 +53,17 @@ private:
     // reference frame information
 
     //! LightGlue keypoints of reference frame
-    const std::vector<cv::Point2f> ref_lg_keypts_;
+    const std::vector<cv::Point2f> ref_dl_keypts_;
     //! bearing vectors of reference frame
-    const eigen_alloc_vector<Vec3_t> ref_lg_bearings_;
+    const eigen_alloc_vector<Vec3_t> ref_dl_bearings_;
 
     //-----------------------------------------
     // current frame information
 
     //! LightGlue keypoints of current frame
-    std::vector<cv::Point2f> cur_lg_keypts_;
+    std::vector<cv::Point2f> cur_dl_keypts_;
     //! bearing vectors of current frame
-    eigen_alloc_vector<Vec3_t> cur_lg_bearings_;
+    eigen_alloc_vector<Vec3_t> cur_dl_bearings_;
 };
 
 } // namespace initialize

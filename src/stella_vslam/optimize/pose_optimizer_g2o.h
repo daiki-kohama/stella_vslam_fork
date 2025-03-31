@@ -56,7 +56,7 @@ public:
                           Mat44_t& optimized_pose,
                           std::vector<bool>& outlier_flags) const override;
 
-    unsigned int optimize_matched_scores(const data::frame& frm, Mat44_t& optimized_pose, std::vector<bool>& outlier_flags, std::vector<double>& matched_scores) const;
+    unsigned int optimize_matched_scores(const data::frame& frm, Mat44_t& optimized_pose, std::vector<bool>& outlier_flags, std::vector<float>& matched_scores) const;
 
 private:
     //! Number of robust optimization (with outlier rejection) attempts

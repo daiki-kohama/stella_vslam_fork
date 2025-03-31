@@ -1,18 +1,33 @@
 #!/bin/sh
 
+CMAKE_INSTALL_PREFIX=/usr/local
+
 mkdir -p /stella_vslam_ws/build && \
 cd /stella_vslam_ws/build && \
 cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DDETRMINISTIC=ON \
-    -DUSE_LIGHTGLUE=OFF \
-    -DUSE_LIGHTGLUE_ONNX=ON \
+    -DUSE_ONNX_RUNTIME=ON \
     .. && \
 make -j15 && \
 make install
 
 if [ $? -ne 0 ]; then
-  echo "Error: some_command failed"
+  echo "Error: some_command failed in stella_vslam_ws"
+  exit 1
+fi
+
+mkdir -p /pangolin_viewer/build && \
+cd /pangolin_viewer/build && \
+cmake \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} \
+    .. && \
+make -j15 && \
+make install
+
+if [ $? -ne 0 ]; then
+  echo "Error: some_command failed in pangolin_viewer"
   exit 1
 fi
 

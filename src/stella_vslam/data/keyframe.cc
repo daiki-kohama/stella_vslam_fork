@@ -127,7 +127,7 @@ keyframe::keyframe(const unsigned int id, const unsigned int src_frm_id, const d
       orb_params_(orb_params), frm_obs_(frm_obs),
       bow_vec_(bow_vec), bow_feat_vec_(bow_feat_vec),
       markers_2d_(markers_2d), image_(image),
-      landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.undist_keypts_.size(), nullptr)) {
+      landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.dl_keypts_.size(), nullptr)) {
     // set pose parameters (pose_wc_, trans_wc_) using pose_cw_
     set_pose_cw(pose_cw);
 
@@ -421,9 +421,7 @@ void keyframe::compute_bow(bow_vocabulary* bow_vocab) {
 
 void keyframe::add_landmark(std::shared_ptr<landmark> lm, const unsigned int idx) {
     std::lock_guard<std::mutex> lock(mtx_observations_);
-    if (id_ == 4 && lm->id_ == 20595) {
-        std::cout << "keyframe.add_landmark: " << id_ << " " << idx << " " << lm->id_ << std::endl;
-    }
+    std::cout << "keyframe.add_landmark: " << id_ << " " << idx << " " << lm->id_ << std::endl;
     landmarks_.at(idx) = lm;
 }
 
@@ -473,7 +471,7 @@ void keyframe::update_landmarks(data::frame& frm,
         }
         // update geometry
         lm->update_mean_normal_and_obs_scale_variance();
-        lm->compute_descriptor();
+        // lm->compute_descriptor();
     }
 }
 
@@ -671,7 +669,7 @@ void keyframe::prepare_for_erasing(map_database* map_db, bow_database* bow_db) {
             }
             lm->erase_observation(map_db, shared_from_this());
             if (!lm->will_be_erased()) {
-                lm->compute_descriptor();
+                // lm->compute_descriptor();
                 lm->update_mean_normal_and_obs_scale_variance();
             }
         }

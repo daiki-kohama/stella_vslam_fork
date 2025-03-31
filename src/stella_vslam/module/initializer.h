@@ -19,7 +19,7 @@ class bow_database;
 } // namespace data
 
 namespace feature {
-class lightglue;
+class lg_matcher;
 }
 
 namespace module {
@@ -39,7 +39,7 @@ public:
     //! Constructor
     initializer(data::map_database* map_db,
                 const YAML::Node& yaml_node,
-                const feature::lightglue* lightglue);
+                feature::lg_matcher* lg_matcher);
 
     //! Destructor
     ~initializer();
@@ -63,8 +63,8 @@ public:
     bool initialize(const camera::setup_type_t setup_type,
                     data::bow_vocabulary* bow_vocab, data::frame& curr_frm);
 
-    //! LightGlue
-    const feature::lightglue* lightglue_;
+    //! LightGlue matcher
+    feature::lg_matcher* lg_matcher_;
 
 private:
     //! map database
@@ -121,7 +121,7 @@ private:
     //! initial matching indices (index: idx of initial frame, value: idx of current frame)
     std::vector<int> init_matches_;
     //! initial matching scores (index: idx of initial frame, value: matching score)
-    std::vector<double> init_match_scores_;
+    std::vector<float> init_match_scores_;
 
     size_t required_keyframes_for_marker_initialization_;
 

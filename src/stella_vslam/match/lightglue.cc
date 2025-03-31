@@ -12,19 +12,22 @@ namespace stella_vslam {
 namespace match {
 
 unsigned int lightglue::match_frame_and_frame(data::frame& frm_1, data::frame& frm_2, std::vector<cv::Point2f>& prev_matched_pts,
-                                              std::vector<int>& matched_indices_2_in_frm_1, std::vector<double>& matched_scores_2_in_frm_1) const {
+                                              std::vector<int>& matched_indices_2_in_frm_1, std::vector<float>& matched_scores_2_in_frm_1) {
     std::cout << "IN match::lightglue::match_frame_and_frame" << std::endl;
 
     unsigned int num_matches = 0;
 
-    matched_indices_2_in_frm_1 = std::vector<int>(frm_1.frm_obs_.lg_keypts_.size(), -1);
-    matched_scores_2_in_frm_1 = std::vector<double>(frm_1.frm_obs_.lg_keypts_.size(), -1.0);
-    std::vector<double> matched_scores_1_in_frm_2(frm_2.frm_obs_.lg_keypts_.size(), -1.0);
+    matched_indices_2_in_frm_1 = std::vector<int>(frm_1.frm_obs_.dl_keypts_.size(), -1);
+    matched_scores_2_in_frm_1 = std::vector<float>(frm_1.frm_obs_.dl_keypts_.size(), -1.0);
+    std::vector<float> matched_scores_1_in_frm_2(frm_2.frm_obs_.dl_keypts_.size(), -1.0);
 
+    std::vector<std::vector<cv::Point2f>> imgs_keypts = {frm_1.frm_obs_.dl_keypts_, frm_2.frm_obs_.dl_keypts_};
+    std::vector<std::vector<std::vector<float>>> imgs_descriptors = {frm_1.frm_obs_.dl_descriptors_, frm_2.frm_obs_.dl_descriptors_};
+    std::vector<std::unordered_set<unsigned int>> imgs_valid_indices = {frm_1.frm_obs_.dl_valid_indices_, frm_2.frm_obs_.dl_valid_indices_};
     std::vector<std::pair<unsigned int, unsigned int>> matched_idx_pairs;
-    std::vector<double> matched_pair_scores;
-    lightglue_->image_match(frm_1.image_, frm_2.image_, frm_1.frm_obs_.lg_keypts_, frm_2.frm_obs_.lg_keypts_,
-                            frm_1.frm_obs_.lg_descriptors_, frm_2.frm_obs_.lg_descriptors_, matched_idx_pairs, matched_pair_scores);
+    std::vector<float> matched_pair_scores;
+
+    lg_matcher_->run(imgs_keypts, imgs_descriptors, imgs_valid_indices, frm_1.camera_->cols_, frm_1.camera_->rows_, matched_idx_pairs, matched_pair_scores);
 
     for (const auto& matched_idx_pair : matched_idx_pairs) {
         const auto idx_1 = matched_idx_pair.first;
@@ -41,14 +44,15 @@ unsigned int lightglue::match_frame_and_frame(data::frame& frm_1, data::frame& f
     // Update the previous matches
     for (unsigned int idx_1 = 0; idx_1 < matched_indices_2_in_frm_1.size(); ++idx_1) {
         if (0 <= matched_indices_2_in_frm_1.at(idx_1)) {
-            prev_matched_pts.at(idx_1) = frm_2.frm_obs_.lg_keypts_.at(matched_indices_2_in_frm_1.at(idx_1));
+            prev_matched_pts.at(idx_1) = frm_2.frm_obs_.dl_keypts_.at(matched_indices_2_in_frm_1.at(idx_1));
         }
     }
 
     return num_matches;
 }
 
-unsigned int lightglue::match_current_and_last_frames(data::frame& curr_frm, const data::frame& last_frm, const float margin, std::vector<double>& matched_scores_in_cur) const {
+unsigned int lightglue::match_current_and_last_frames(data::frame& curr_frm, const data::frame& last_frm,
+                                                      const float margin, std::vector<float>& matched_scores_in_cur) {
     unsigned int num_matches = 0;
 
     const Mat33_t rot_cw = curr_frm.get_rot_cw();
@@ -71,23 +75,23 @@ unsigned int lightglue::match_current_and_last_frames(data::frame& curr_frm, con
                                      ? false
                                      : -trans_lc(2) > curr_frm.camera_->true_baseline_;
 
-    std::vector<cv::Point2f> curr_frm_valid_lg_keypts;
-    std::vector<std::vector<double>> curr_frm_valid_lg_descriptors;
-    std::vector<unsigned int> curr_frm_idices_valid;
-    for (unsigned int idx_curr = 0; idx_curr < curr_frm.frm_obs_.lg_keypts_.size(); ++idx_curr) {
+    std::unordered_set<unsigned int> curr_frm_valid_idices;
+    for (unsigned int idx_curr = 0; idx_curr < curr_frm.frm_obs_.dl_keypts_.size(); ++idx_curr) {
+        if (!curr_frm.frm_obs_.dl_valid_indices_.count(idx_curr)) {
+            continue;
+        }
         const auto& lm = curr_frm.get_landmark(idx_curr);
         if (lm && lm->has_observation()) {
             continue;
         }
-        curr_frm_valid_lg_keypts.push_back(curr_frm.frm_obs_.lg_keypts_.at(idx_curr));
-        curr_frm_valid_lg_descriptors.push_back(curr_frm.frm_obs_.lg_descriptors_.at(idx_curr));
-        curr_frm_idices_valid.push_back(idx_curr);
+        curr_frm_valid_idices.insert(idx_curr);
     }
 
-    std::vector<cv::Point2f> last_frm_valid_lg_keypts;
-    std::vector<std::vector<double>> last_frm_valid_lg_descriptors;
-    std::vector<unsigned int> last_frm_idices_valid;
-    for (unsigned int idx_last = 0; idx_last < last_frm.frm_obs_.lg_keypts_.size(); ++idx_last) {
+    std::unordered_set<unsigned int> last_frm_valid_idices;
+    for (unsigned int idx_last = 0; idx_last < last_frm.frm_obs_.dl_keypts_.size(); ++idx_last) {
+        if (!last_frm.frm_obs_.dl_valid_indices_.count(idx_last)) {
+            continue;
+        }
         const auto& lm = last_frm.get_landmark(idx_last);
         if (!lm) {
             continue;
@@ -95,21 +99,22 @@ unsigned int lightglue::match_current_and_last_frames(data::frame& curr_frm, con
         if (lm->will_be_erased()) {
             continue;
         }
-        last_frm_valid_lg_keypts.push_back(last_frm.frm_obs_.lg_keypts_.at(idx_last));
-        last_frm_valid_lg_descriptors.push_back(last_frm.frm_obs_.lg_descriptors_.at(idx_last));
-        last_frm_idices_valid.push_back(idx_last);
+        last_frm_valid_idices.insert(idx_last);
     }
 
+    std::vector<std::vector<cv::Point2f>> imgs_keypts = {curr_frm.frm_obs_.dl_keypts_, last_frm.frm_obs_.dl_keypts_};
+    std::vector<std::vector<std::vector<float>>> imgs_descriptors = {curr_frm.frm_obs_.dl_descriptors_, last_frm.frm_obs_.dl_descriptors_};
+    std::vector<std::unordered_set<unsigned int>> imgs_valid_indices = {curr_frm_valid_idices, last_frm_valid_idices};
     std::vector<std::pair<unsigned int, unsigned int>> matched_idx_pairs;
-    std::vector<double> matched_pair_scores;
-    lightglue_->image_match(curr_frm.image_, last_frm.image_, curr_frm_valid_lg_keypts, last_frm_valid_lg_keypts,
-                            curr_frm_valid_lg_descriptors, last_frm_valid_lg_descriptors, matched_idx_pairs, matched_pair_scores);
+    std::vector<float> matched_pair_scores;
 
-    matched_scores_in_cur.resize(curr_frm.frm_obs_.lg_keypts_.size(), -1.0);
+    lg_matcher_->run(imgs_keypts, imgs_descriptors, imgs_valid_indices, curr_frm.camera_->cols_, curr_frm.camera_->rows_, matched_idx_pairs, matched_pair_scores);
+
+    matched_scores_in_cur.resize(curr_frm.frm_obs_.dl_keypts_.size(), -1.0);
     for (unsigned int i = 0; i < matched_idx_pairs.size(); ++i) {
         const auto matched_idx_pair = matched_idx_pairs.at(i);
-        const auto idx_curr = curr_frm_idices_valid.at(matched_idx_pair.first);
-        const auto idx_last = last_frm_idices_valid.at(matched_idx_pair.second);
+        const auto idx_curr = matched_idx_pair.first;
+        const auto idx_last = matched_idx_pair.second;
         const auto& lm = last_frm.get_landmark(idx_last);
 
         // 3D point coordinates with the global reference
@@ -157,23 +162,25 @@ unsigned int lightglue::match_current_and_last_frames(data::frame& curr_frm, con
 }
 
 unsigned int lightglue::match_frame_and_keyframe(data::frame& frm, const std::shared_ptr<data::keyframe>& keyfrm,
-                                                 std::vector<std::shared_ptr<data::landmark>>& matched_lms_in_frm, std::vector<double>& matched_scores_in_frm,
-                                                 bool use_fixed_seed) const {
+                                                 std::vector<std::shared_ptr<data::landmark>>& matched_lms_in_frm, std::vector<float>& matched_scores_in_frm,
+                                                 bool use_fixed_seed) {
     std::cout << "IN match::lightglue::match_frame_and_keyframe" << std::endl;
 
     // Initialization
-    const auto num_frm_keypts = frm.frm_obs_.lg_keypts_.size();
+    const auto num_frm_keypts = frm.frm_obs_.dl_keypts_.size();
     const auto keyfrm_lms = keyfrm->get_landmarks();
     unsigned int num_inlier_matches = 0;
     matched_lms_in_frm = std::vector<std::shared_ptr<data::landmark>>(num_frm_keypts, nullptr);
-    matched_scores_in_frm = std::vector<double>(num_frm_keypts, 0.0);
+    matched_scores_in_frm = std::vector<float>(num_frm_keypts, 0.0);
 
     // Compute feature matching with LightGlue
+    std::vector<std::vector<cv::Point2f>> imgs_keypts = {frm.frm_obs_.dl_keypts_, keyfrm->frm_obs_.dl_keypts_};
+    std::vector<std::vector<std::vector<float>>> imgs_descriptors = {frm.frm_obs_.dl_descriptors_, keyfrm->frm_obs_.dl_descriptors_};
+    std::vector<std::unordered_set<unsigned int>> imgs_valid_indices = {frm.frm_obs_.dl_valid_indices_, keyfrm->frm_obs_.dl_valid_indices_};
     std::vector<std::pair<unsigned int, unsigned int>> matched_idx_pairs;
-    std::vector<double> matched_scores;
-    // brute_force_match(frm.frm_obs_, keyfrm, matches);
-    lightglue_->image_match(frm.image_, keyfrm->image_, frm.frm_obs_.lg_keypts_, keyfrm->frm_obs_.lg_keypts_,
-                            frm.frm_obs_.lg_descriptors_, keyfrm->frm_obs_.lg_descriptors_, matched_idx_pairs, matched_scores);
+    std::vector<float> matched_scores;
+
+    lg_matcher_->run(imgs_keypts, imgs_descriptors, imgs_valid_indices, frm.camera_->cols_, frm.camera_->rows_, matched_idx_pairs, matched_scores);
 
     for (unsigned int i = 0; i < matched_idx_pairs.size(); ++i) {
         const auto frm_idx = matched_idx_pairs.at(i).first;
@@ -186,9 +193,9 @@ unsigned int lightglue::match_frame_and_keyframe(data::frame& frm, const std::sh
     for (const auto& pair : matched_idx_pairs) {
         const auto idx_1 = pair.first;
         const auto idx_2 = pair.second;
-        cv::circle(img_matches, frm.frm_obs_.lg_keypts_.at(idx_1), 2, cv::Scalar(255, 0, 0));
-        cv::circle(img_matches, keyfrm->frm_obs_.lg_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), 2, cv::Scalar(255, 0, 0));
-        cv::line(img_matches, frm.frm_obs_.lg_keypts_.at(idx_1), keyfrm->frm_obs_.lg_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), cv::Scalar(0, 255, 0));
+        cv::circle(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), 2, cv::Scalar(255, 0, 0));
+        cv::circle(img_matches, keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), 2, cv::Scalar(255, 0, 0));
+        cv::line(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), cv::Scalar(0, 255, 0));
     }
     cv::imwrite("matches.jpg", img_matches);
 
@@ -199,14 +206,14 @@ unsigned int lightglue::match_frame_and_keyframe(data::frame& frm, const std::sh
     for (const auto& pair : matches) {
         const auto idx_1 = pair.first;
         const auto idx_2 = pair.second;
-        cv::circle(img_matches, frm.frm_obs_.lg_keypts_.at(idx_1), 2, cv::Scalar(255, 0, 0));
-        cv::circle(img_matches, keyfrm->frm_obs_.lg_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), 2, cv::Scalar(255, 0, 0));
-        cv::line(img_matches, frm.frm_obs_.lg_keypts_.at(idx_1), keyfrm->frm_obs_.lg_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), cv::Scalar(0, 255, 0));
+        cv::circle(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), 2, cv::Scalar(255, 0, 0));
+        cv::circle(img_matches, keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), 2, cv::Scalar(255, 0, 0));
+        cv::line(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), cv::Scalar(0, 255, 0));
     }
     cv::imwrite("matches_klmatch.jpg", img_matches);
 
     // Extract only inliers with RANSAC
-    solve::essential_solver solver(frm.frm_obs_.lg_bearings_, keyfrm->frm_obs_.lg_bearings_, matches, use_fixed_seed);
+    solve::essential_solver solver(frm.frm_obs_.dl_bearings_, keyfrm->frm_obs_.dl_bearings_, matches, use_fixed_seed);
     solver.find_via_ransac(1000, true);
     if (!solver.solution_is_valid()) {
         return 0;
@@ -234,10 +241,10 @@ unsigned int lightglue::keypoint_landmark_match(const data::frame_observation& f
                                                 std::vector<std::pair<int, int>>& matches) const {
     unsigned int num_matches = 0;
 
-    const auto num_lg_keypts_1 = frm_obs.lg_keypts_.size();
-    const auto num_lg_keypts_2 = keyfrm->frm_obs_.lg_keypts_.size();
-    const auto keypts_1 = frm_obs.lg_keypts_;
-    const auto keypts_2 = keyfrm->frm_obs_.lg_keypts_;
+    const auto num_dl_keypts_1 = frm_obs.dl_keypts_.size();
+    const auto num_dl_keypts_2 = keyfrm->frm_obs_.dl_keypts_.size();
+    const auto keypts_1 = frm_obs.dl_keypts_;
+    const auto keypts_2 = keyfrm->frm_obs_.dl_keypts_;
     const auto lms_2 = keyfrm->get_landmarks();
 
     std::unordered_map<unsigned int, unsigned int> match_map_1_in_2;
@@ -246,9 +253,9 @@ unsigned int lightglue::keypoint_landmark_match(const data::frame_observation& f
     }
 
     // Index 2 associated to each index 1
-    auto matched_indices_2_in_1 = std::vector<int>(num_lg_keypts_1, -1);
+    auto matched_indices_2_in_1 = std::vector<int>(num_dl_keypts_1, -1);
 
-    for (unsigned int idx_2 = 0; idx_2 < num_lg_keypts_2; ++idx_2) {
+    for (unsigned int idx_2 = 0; idx_2 < num_dl_keypts_2; ++idx_2) {
         // 3次元点が有効なもののみ対象にする
         const auto& lm_2 = lms_2.at(idx_2);
         if (!lm_2) {
@@ -285,8 +292,8 @@ unsigned int lightglue::match_for_triangulation(const std::shared_ptr<data::keyf
                                                 const std::shared_ptr<data::keyframe>& keyfrm_2,
                                                 const Mat33_t& E_12,
                                                 std::vector<std::pair<unsigned int, unsigned int>>& matched_idx_pairs,
-                                                std::vector<double>& matched_scores_in_keyfrm_1,
-                                                const float residual_rad_thr) const {
+                                                std::vector<float>& matched_scores_in_keyfrm_1,
+                                                const float residual_rad_thr) {
     std::cout << "IN match::lightglue::match_for_triangulation; keyfrm_1: " << keyfrm_1->id_ << ", keyfrm_2: " << keyfrm_2->id_ << std::endl;
     unsigned int num_matches = 0;
 
@@ -301,17 +308,20 @@ unsigned int lightglue::match_for_triangulation(const std::shared_ptr<data::keyf
     // Acquire the 3D point information of the keframes
     const auto assoc_lms_in_keyfrm_1 = keyfrm_1->get_landmarks();
     const auto assoc_lms_in_keyfrm_2 = keyfrm_2->get_landmarks();
-    const auto num_lg_keypts_1 = keyfrm_1->frm_obs_.lg_keypts_.size();
-    const auto num_lg_keypts_2 = keyfrm_2->frm_obs_.lg_keypts_.size();
+    const auto num_dl_keypts_1 = keyfrm_1->frm_obs_.dl_keypts_.size();
+    const auto num_dl_keypts_2 = keyfrm_2->frm_obs_.dl_keypts_.size();
 
+    std::vector<std::vector<cv::Point2f>> imgs_keypts = {keyfrm_1->frm_obs_.dl_keypts_, keyfrm_2->frm_obs_.dl_keypts_};
+    std::vector<std::vector<std::vector<float>>> imgs_descriptors = {keyfrm_1->frm_obs_.dl_descriptors_, keyfrm_2->frm_obs_.dl_descriptors_};
+    std::vector<std::unordered_set<unsigned int>> imgs_valid_indices = {keyfrm_1->frm_obs_.dl_valid_indices_, keyfrm_2->frm_obs_.dl_valid_indices_};
     std::vector<std::pair<unsigned int, unsigned int>> lg_matched_idx_pairs;
-    std::vector<double> lg_matched_scores;
-    lightglue_->image_match(keyfrm_1->image_, keyfrm_2->image_, keyfrm_1->frm_obs_.lg_keypts_, keyfrm_2->frm_obs_.lg_keypts_,
-                            keyfrm_1->frm_obs_.lg_descriptors_, keyfrm_2->frm_obs_.lg_descriptors_, lg_matched_idx_pairs, lg_matched_scores);
+    std::vector<float> lg_matched_scores;
+
+    lg_matcher_->run(imgs_keypts, imgs_descriptors, imgs_valid_indices, keyfrm_1->camera_->cols_, keyfrm_1->camera_->rows_, lg_matched_idx_pairs, lg_matched_scores);
 
     // Save the keypoint idx in keyframe 2 which is already associated to the keypoint idx in keyframe 1
-    std::vector<int> matched_indices_2_in_keyfrm_1(num_lg_keypts_1, -1);
-    matched_scores_in_keyfrm_1.resize(num_lg_keypts_1, -1.0);
+    std::vector<int> matched_indices_2_in_keyfrm_1(num_dl_keypts_1, -1);
+    matched_scores_in_keyfrm_1.resize(num_dl_keypts_1, -1.0);
     for (unsigned int i = 0; i < lg_matched_idx_pairs.size(); ++i) {
         const auto idx_1 = lg_matched_idx_pairs.at(i).first;
         const auto idx_2 = lg_matched_idx_pairs.at(i).second;
@@ -319,8 +329,8 @@ unsigned int lightglue::match_for_triangulation(const std::shared_ptr<data::keyf
         matched_scores_in_keyfrm_1.at(idx_1) = lg_matched_scores.at(i);
     }
 
-    std::vector<int> inlier_indices_2_in_keyfrm_1(num_lg_keypts_1, -1);
-    for (unsigned int idx_1 = 0; idx_1 < num_lg_keypts_1; ++idx_1) {
+    std::vector<int> inlier_indices_2_in_keyfrm_1(num_dl_keypts_1, -1);
+    for (unsigned int idx_1 = 0; idx_1 < num_dl_keypts_1; ++idx_1) {
         if (matched_indices_2_in_keyfrm_1.at(idx_1) < 0) {
             continue;
         }
@@ -335,8 +345,8 @@ unsigned int lightglue::match_for_triangulation(const std::shared_ptr<data::keyf
             continue;
         }
 
-        const Vec3_t& lg_bearing_1 = keyfrm_1->frm_obs_.lg_bearings_.at(idx_1);
-        const Vec3_t& lg_bearing_2 = keyfrm_2->frm_obs_.lg_bearings_.at(idx_2);
+        const Vec3_t& lg_bearing_1 = keyfrm_1->frm_obs_.dl_bearings_.at(idx_1);
+        const Vec3_t& lg_bearing_2 = keyfrm_2->frm_obs_.dl_bearings_.at(idx_2);
 
         if (valid_epiplane) {
             // Do not use any keypoints near the epipole if both are not stereo keypoints
@@ -384,8 +394,8 @@ unsigned int lightglue::detect_duplication(const std::shared_ptr<data::keyframe>
                                            // std::unordered_map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>>&, duplicated_lms_in_keyfrm,
                                            std::map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>, id_less<std::shared_ptr<data::landmark>>>& duplicated_lms_in_keyfrm,
                                            std::unordered_map<unsigned int, std::shared_ptr<data::landmark>>& new_connections,
-                                           std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, double>>& new_connections_score,
-                                           bool do_reprojection_matching) const {
+                                           std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, float>>& new_connections_score,
+                                           bool do_reprojection_matching) {
     std::cout << "IN match::lightglue::detect_duplication" << std::endl;
     const Vec3_t trans_wc = -rot_cw.transpose() * trans_cw;
     unsigned int num_fused = 0;
@@ -434,45 +444,44 @@ unsigned int lightglue::detect_duplication(const std::shared_ptr<data::keyframe>
     }
 
     std::vector<std::shared_ptr<data::keyframe>> neighbors = keyfrm->graph_node_->get_top_n_covisibilities(20);
-    keyfrm_lg_keypts_t keyfrm_lg_keypts;
-    keyfrm_lg_descriptors_t keyfrm_lg_descriptors;
+    keyfrm_dl_keypts_t keyfrm_dl_keypts;
 
-    extract_landmarks_with_keyframes(neighbors, lms_for_extraction, keyfrm_lg_keypts, keyfrm_lg_descriptors);
+    extract_landmarks_with_keyframes(neighbors, lms_for_extraction, keyfrm_dl_keypts);
 
-    for (const auto& pair : keyfrm_lg_keypts) {
+    for (const auto& pair : keyfrm_dl_keypts) {
         const auto lm_keyfrm = pair.first;
-        const auto lms_and_lg_keypts = pair.second;
-        const auto lms_and_lg_descriptors = keyfrm_lg_descriptors.at(lm_keyfrm);
+        const auto lm_indices = pair.second;
 
-        std::vector<cv::Point2f> lg_keypts;
-        std::vector<std::vector<double>> lg_descriptors;
-        std::vector<std::shared_ptr<data::landmark>> lms;
-        for (unsigned int i = 0; i < lms_and_lg_keypts.size(); ++i) {
-            lg_keypts.push_back(lms_and_lg_keypts.at(i).second);
-            lg_descriptors.push_back(lms_and_lg_descriptors.at(i).second);
-            lms.push_back(lms_and_lg_keypts.at(i).first);
+        std::unordered_set<unsigned int> lm_valid_indices;
+        for (unsigned int idx : lm_indices) {
+            if (lm_keyfrm->frm_obs_.dl_valid_indices_.count(idx)) {
+                lm_valid_indices.insert(idx);
+            }
         }
 
-        if (lg_keypts.empty() || lg_descriptors.empty() || lms.empty()) {
+        if (lm_valid_indices.empty()) {
             continue;
         }
 
+        std::vector<std::vector<cv::Point2f>> imgs_keypts = {keyfrm->frm_obs_.dl_keypts_, lm_keyfrm->frm_obs_.dl_keypts_};
+        std::vector<std::vector<std::vector<float>>> imgs_descriptors = {keyfrm->frm_obs_.dl_descriptors_, lm_keyfrm->frm_obs_.dl_descriptors_};
+        std::vector<std::unordered_set<unsigned int>> imgs_valid_indices = {keyfrm->frm_obs_.dl_valid_indices_, lm_valid_indices};
         std::vector<std::pair<unsigned int, unsigned int>> matched_idx_pairs;
-        std::vector<double> matched_scores;
-        lightglue_->image_match(keyfrm->image_, lm_keyfrm->image_, keyfrm->frm_obs_.lg_keypts_, lg_keypts,
-                                keyfrm->frm_obs_.lg_descriptors_, lg_descriptors, matched_idx_pairs, matched_scores);
+        std::vector<float> matched_scores;
+
+        lg_matcher_->run(imgs_keypts, imgs_descriptors, imgs_valid_indices, keyfrm->camera_->cols_, keyfrm->camera_->rows_, matched_idx_pairs, matched_scores);
 
         for (unsigned int i = 0; i < matched_idx_pairs.size(); ++i) {
             const auto idx_1 = matched_idx_pairs.at(i).first;
             const auto idx_2 = matched_idx_pairs.at(i).second;
-            const auto lm = lms.at(idx_2);
+            const auto lm = lm_keyfrm->get_landmark(idx_2);
 
             if (do_reprojection_matching) {
                 const Vec3_t pos_w = lm->get_pos_in_world();
                 Vec2_t reproj;
                 float x_right;
                 const bool in_image = keyfrm->camera_->reproject_to_image(rot_cw, trans_cw, pos_w, reproj, x_right);
-                const auto lg_keypt = keyfrm->frm_obs_.lg_keypts_.at(idx_1);
+                const auto lg_keypt = keyfrm->frm_obs_.dl_keypts_.at(idx_1);
                 const auto scale_level = 0;
                 if (!keyfrm->frm_obs_.stereo_x_right_.empty() && keyfrm->frm_obs_.stereo_x_right_.at(idx_1) >= 0) {
                     // Compute reprojection error with 3 degrees of freedom if a stereo match exists
@@ -531,8 +540,8 @@ template unsigned int lightglue::detect_duplication(const std::shared_ptr<data::
                                                     // std::unordered_map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>>&,
                                                     std::map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>, id_less<std::shared_ptr<data::landmark>>>&,
                                                     std::unordered_map<unsigned int, std::shared_ptr<data::landmark>>&,
-                                                    std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, double>>&,
-                                                    bool) const;
+                                                    std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, float>>&,
+                                                    bool);
 template unsigned int lightglue::detect_duplication(const std::shared_ptr<data::keyframe>&,
                                                     const Mat33_t&,
                                                     const Vec3_t&,
@@ -541,8 +550,8 @@ template unsigned int lightglue::detect_duplication(const std::shared_ptr<data::
                                                     // std::unordered_map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>>&,
                                                     std::map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>, id_less<std::shared_ptr<data::landmark>>>&,
                                                     std::unordered_map<unsigned int, std::shared_ptr<data::landmark>>&,
-                                                    std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, double>>&,
-                                                    bool) const;
+                                                    std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, float>>&,
+                                                    bool);
 template unsigned int lightglue::detect_duplication(const std::shared_ptr<data::keyframe>&,
                                                     const Mat33_t&,
                                                     const Vec3_t&,
@@ -551,18 +560,16 @@ template unsigned int lightglue::detect_duplication(const std::shared_ptr<data::
                                                     // std::unordered_map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>>&,
                                                     std::map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>, id_less<std::shared_ptr<data::landmark>>>&,
                                                     std::unordered_map<unsigned int, std::shared_ptr<data::landmark>>&,
-                                                    std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, double>>&,
-                                                    bool) const;
+                                                    std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, float>>&,
+                                                    bool);
 
 unsigned int lightglue::match_frame_and_landmarks(data::frame& frm,
                                                   const std::vector<std::shared_ptr<data::landmark>>& local_landmarks,
-                                                  eigen_alloc_unord_map<unsigned int, Vec2_t>& lm_to_reproj) const {
+                                                  eigen_alloc_unord_map<unsigned int, Vec2_t>& lm_to_reproj) {
     unsigned int num_matches = 0;
 
     const auto neighbors = frm.ref_keyfrm_->graph_node_->get_top_n_covisibilities(10);
-
-    keyfrm_lg_keypts_t keyfrm_lg_keypts;
-    keyfrm_lg_descriptors_t keyfrm_lg_descriptors;
+    keyfrm_dl_keypts_t keyfrm_dl_keypts;
 
     std::vector<std::shared_ptr<data::landmark>> lms_for_extraction;
     for (auto local_lm : local_landmarks) {
@@ -572,37 +579,37 @@ unsigned int lightglue::match_frame_and_landmarks(data::frame& frm,
         lms_for_extraction.push_back(local_lm);
     }
 
-    extract_landmarks_with_keyframes(neighbors, lms_for_extraction, keyfrm_lg_keypts, keyfrm_lg_descriptors);
+    extract_landmarks_with_keyframes(neighbors, lms_for_extraction, keyfrm_dl_keypts);
 
     // Match the current frame and the local landmarks for each keyframe
-    for (const auto& pair : keyfrm_lg_keypts) {
+    for (const auto& pair : keyfrm_dl_keypts) {
         const auto keyfrm = pair.first;
-        const auto lms_and_lg_keypts = pair.second;
-        const auto lms_and_lg_descriptors = keyfrm_lg_descriptors.at(keyfrm);
+        const auto lm_indices = pair.second;
 
-        std::vector<cv::Point2f> lg_keypts;
-        std::vector<std::vector<double>> lg_descriptors;
-        std::vector<std::shared_ptr<data::landmark>> lms;
-        for (unsigned int i = 0; i < lms_and_lg_keypts.size(); ++i) {
-            lg_keypts.push_back(lms_and_lg_keypts.at(i).second);
-            lg_descriptors.push_back(lms_and_lg_descriptors.at(i).second);
-            lms.push_back(lms_and_lg_keypts.at(i).first);
+        std::unordered_set<unsigned int> lm_valid_indices;
+        for (unsigned int idx : lm_indices) {
+            if (keyfrm->frm_obs_.dl_valid_indices_.count(idx)) {
+                lm_valid_indices.insert(idx);
+            }
         }
 
-        if (lg_keypts.empty() || lg_descriptors.empty() || lms.empty()) {
+        if (lm_valid_indices.empty()) {
             continue;
         }
 
+        std::vector<std::vector<cv::Point2f>> imgs_keypts = {frm.frm_obs_.dl_keypts_, keyfrm->frm_obs_.dl_keypts_};
+        std::vector<std::vector<std::vector<float>>> imgs_descriptors = {frm.frm_obs_.dl_descriptors_, keyfrm->frm_obs_.dl_descriptors_};
+        std::vector<std::unordered_set<unsigned int>> imgs_valid_indices = {frm.frm_obs_.dl_valid_indices_, lm_valid_indices};
         std::vector<std::pair<unsigned int, unsigned int>> matched_idx_pairs;
-        std::vector<double> matched_scores;
-        lightglue_->image_match(frm.image_, keyfrm->image_, frm.frm_obs_.lg_keypts_, lg_keypts,
-                                frm.frm_obs_.lg_descriptors_, lg_descriptors, matched_idx_pairs, matched_scores);
+        std::vector<float> matched_scores;
 
-        std::vector<double> matched_scores_in_frm(frm.frm_obs_.lg_keypts_.size(), -1.0);
+        lg_matcher_->run(imgs_keypts, imgs_descriptors, imgs_valid_indices, frm.camera_->cols_, frm.camera_->rows_, matched_idx_pairs, matched_scores);
+
+        std::vector<float> matched_scores_in_frm(frm.frm_obs_.dl_keypts_.size(), -1.0);
         for (unsigned int i = 0; i < matched_idx_pairs.size(); ++i) {
             const auto idx_1 = matched_idx_pairs.at(i).first;
             const auto idx_2 = matched_idx_pairs.at(i).second;
-            const auto lm = lms.at(idx_2);
+            const auto lm = keyfrm->get_landmark(idx_2);
             frm.add_landmark(lm, idx_1);
             matched_scores_in_frm.at(idx_1) = matched_scores.at(i);
             ++num_matches;
@@ -615,7 +622,7 @@ unsigned int lightglue::match_frame_and_landmarks(data::frame& frm,
 
 void lightglue::extract_landmarks_with_keyframes(const std::vector<std::shared_ptr<data::keyframe>>& neighbors,
                                                  const std::vector<std::shared_ptr<data::landmark>>& landmarks,
-                                                 keyfrm_lg_keypts_t& keyfrm_lg_keypts, keyfrm_lg_descriptors_t& keyfrm_lg_descriptors) const {
+                                                 keyfrm_dl_keypts_t& keyfrm_dl_keypts) const {
     const auto neighbor_num = neighbors.size();
 
     for (auto lm : landmarks) {
@@ -624,14 +631,13 @@ void lightglue::extract_landmarks_with_keyframes(const std::vector<std::shared_p
         }
 
         // Acquire local landmarks's LightGlue keypoints and descriptors
-        const auto observed_lg_keypts = lm->get_lg_keypoints();
-        const auto observed_lg_descriptors = lm->get_lg_descriptors();
+        const auto observed_dl_keypts = lm->get_dl_keypoints_idx();
 
         // Find the nearest local landmark's keyframe to the current frame's reference keyframe
         std::shared_ptr<data::keyframe> nearest_keyfrm = nullptr;
         unsigned int nearest_keyfrm_idx = neighbor_num;
 
-        for (const auto& pair : observed_lg_keypts) {
+        for (const auto& pair : observed_dl_keypts) {
             const auto keyfrm = pair.first;
             if (!keyfrm) {
                 continue;
@@ -656,8 +662,7 @@ void lightglue::extract_landmarks_with_keyframes(const std::vector<std::shared_p
             continue;
         }
 
-        keyfrm_lg_keypts[nearest_keyfrm].push_back(std::make_pair(lm, observed_lg_keypts.at(nearest_keyfrm)));
-        keyfrm_lg_descriptors[nearest_keyfrm].push_back(std::make_pair(lm, observed_lg_descriptors.at(nearest_keyfrm)));
+        keyfrm_dl_keypts[nearest_keyfrm].insert(observed_dl_keypts.at(nearest_keyfrm));
     }
 }
 

@@ -16,7 +16,7 @@ bearing_vector::bearing_vector(const data::frame& ref_frm,
                                const float reproj_err_thr,
                                bool use_fixed_seed)
     : base(ref_frm, num_ransac_iters, min_num_triangulated, min_num_valid_pts, parallax_deg_thr, reproj_err_thr),
-      use_fixed_seed_(use_fixed_seed), ref_lg_keypts_(ref_frm.frm_obs_.lg_keypts_), ref_lg_bearings_(ref_frm.frm_obs_.lg_bearings_) {
+      use_fixed_seed_(use_fixed_seed), ref_dl_keypts_(ref_frm.frm_obs_.dl_keypts_), ref_dl_bearings_(ref_frm.frm_obs_.dl_bearings_) {
     spdlog::debug("CONSTRUCT: initialize::bearing_vector");
 }
 
@@ -28,11 +28,11 @@ bool bearing_vector::initialize(const data::frame& cur_frm, const std::vector<in
     // set the current camera model
     cur_camera_ = cur_frm.camera_;
     // store the keypoints and bearings
-    cur_lg_keypts_ = cur_frm.frm_obs_.lg_keypts_;
-    cur_lg_bearings_ = cur_frm.frm_obs_.lg_bearings_;
+    cur_dl_keypts_ = cur_frm.frm_obs_.dl_keypts_;
+    cur_dl_bearings_ = cur_frm.frm_obs_.dl_bearings_;
     // align matching information
     ref_cur_matches_.clear();
-    ref_cur_matches_.reserve(cur_frm.frm_obs_.lg_keypts_.size());
+    ref_cur_matches_.reserve(cur_frm.frm_obs_.dl_keypts_.size());
     for (unsigned int ref_idx = 0; ref_idx < ref_matches_with_cur.size(); ++ref_idx) {
         const auto cur_idx = ref_matches_with_cur.at(ref_idx);
         if (0 <= cur_idx) {
@@ -41,7 +41,7 @@ bool bearing_vector::initialize(const data::frame& cur_frm, const std::vector<in
     }
 
     // compute an E matrix
-    auto essential_solver = solve::essential_solver(ref_lg_bearings_, cur_lg_bearings_, ref_cur_matches_, use_fixed_seed_);
+    auto essential_solver = solve::essential_solver(ref_dl_bearings_, cur_dl_bearings_, ref_cur_matches_, use_fixed_seed_);
     essential_solver.find_via_ransac(num_ransac_iters_, false);
 
     // reconstruct map if the solution is valid
@@ -88,11 +88,11 @@ unsigned int bearing_vector::triangulate(const Mat33_t& rot_ref_to_cur, const Ve
     const float reproj_err_thr_sq = reproj_err_thr_ * reproj_err_thr_;
 
     // resize buffers according to the number of observed keypoints in the reference
-    is_triangulated.resize(ref_lg_keypts_.size(), false);
-    triangulated_pts.resize(ref_lg_keypts_.size());
+    is_triangulated.resize(ref_dl_keypts_.size(), false);
+    triangulated_pts.resize(ref_dl_keypts_.size());
 
     std::vector<float> cos_parallaxes;
-    cos_parallaxes.reserve(ref_lg_keypts_.size());
+    cos_parallaxes.reserve(ref_dl_keypts_.size());
 
     // camera centers
     const Vec3_t ref_cam_center = Vec3_t::Zero();
@@ -107,8 +107,8 @@ unsigned int bearing_vector::triangulate(const Mat33_t& rot_ref_to_cur, const Ve
             continue;
         }
 
-        const Vec3_t& ref_bearing = ref_lg_bearings_.at(ref_cur_matches_.at(i).first);
-        const Vec3_t& cur_bearing = cur_lg_bearings_.at(ref_cur_matches_.at(i).second);
+        const Vec3_t& ref_bearing = ref_dl_bearings_.at(ref_cur_matches_.at(i).first);
+        const Vec3_t& cur_bearing = cur_dl_bearings_.at(ref_cur_matches_.at(i).second);
 
         const Vec3_t pos_c_in_ref = solve::triangulator::triangulate(ref_bearing, cur_bearing, rot_ref_to_cur, trans_ref_to_cur);
 
@@ -138,8 +138,8 @@ unsigned int bearing_vector::triangulate(const Mat33_t& rot_ref_to_cur, const Ve
             }
         }
 
-        const auto& ref_lg_keypt = ref_lg_keypts_.at(ref_cur_matches_.at(i).first);
-        const auto& cur_lg_keypt = cur_lg_keypts_.at(ref_cur_matches_.at(i).second);
+        const auto& ref_lg_keypt = ref_dl_keypts_.at(ref_cur_matches_.at(i).first);
+        const auto& cur_lg_keypt = cur_dl_keypts_.at(ref_cur_matches_.at(i).second);
 
         // compute a reprojection error in the reference
         Vec2_t reproj_in_ref;

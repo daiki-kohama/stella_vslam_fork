@@ -25,7 +25,7 @@ frame_publisher::~frame_publisher() {
 cv::Mat frame_publisher::draw_frame() {
     cv::Mat img;
     tracker_state_t tracking_state;
-    std::vector<cv::KeyPoint> curr_keypts;
+    std::vector<cv::Point2f> curr_keypts;
     std::vector<data::marker2d> curr_mkrs2d;
     bool mapping_is_enabled;
     std::vector<std::shared_ptr<data::landmark>> curr_lms;
@@ -94,13 +94,13 @@ std::string frame_publisher::get_tracking_state() {
     return state_str;
 }
 
-std::pair<std::vector<cv::KeyPoint>, std::vector<std::shared_ptr<data::landmark>>> frame_publisher::get_keypoints_and_landmarks() {
+std::pair<std::vector<cv::Point2f>, std::vector<std::shared_ptr<data::landmark>>> frame_publisher::get_keypoints_and_landmarks() {
     std::lock_guard<std::mutex> lock(mtx_);
 
     return std::make_pair(curr_keypts_, curr_lms_);
 }
 
-std::vector<cv::KeyPoint> frame_publisher::get_keypoints() {
+std::vector<cv::Point2f> frame_publisher::get_keypoints() {
     std::lock_guard<std::mutex> lock(mtx_);
     return curr_keypts_;
 }
@@ -129,7 +129,7 @@ double frame_publisher::get_extraction_time_elapsed_ms() {
     return extraction_time_elapsed_ms_;
 }
 
-unsigned int frame_publisher::draw_tracked_points(cv::Mat& img, const std::vector<cv::KeyPoint>& curr_keypts,
+unsigned int frame_publisher::draw_tracked_points(cv::Mat& img, const std::vector<cv::Point2f>& curr_keypts,
                                                   const std::vector<std::shared_ptr<data::landmark>>& curr_lms,
                                                   const bool mapping_is_enabled,
                                                   const float mag) const {
@@ -146,17 +146,17 @@ unsigned int frame_publisher::draw_tracked_points(cv::Mat& img, const std::vecto
             continue;
         }
 
-        const cv::Point2f pt_begin{curr_keypts.at(i).pt.x * mag - radius, curr_keypts.at(i).pt.y * mag - radius};
-        const cv::Point2f pt_end{curr_keypts.at(i).pt.x * mag + radius, curr_keypts.at(i).pt.y * mag + radius};
+        const cv::Point2f pt_begin{curr_keypts.at(i).x * mag - radius, curr_keypts.at(i).y * mag - radius};
+        const cv::Point2f pt_end{curr_keypts.at(i).x * mag + radius, curr_keypts.at(i).y * mag + radius};
 
         double score = lm->get_observed_ratio();
         const tinycolormap::Color color = tinycolormap::GetColor(score, tinycolormap::ColormapType::Turbo);
         if (mapping_is_enabled) {
             const cv::Scalar mapping_color{color.b() * 255, color.g() * 255, color.r() * 255};
-            cv::circle(img, curr_keypts.at(i).pt * mag, 2, mapping_color, -1);
+            cv::circle(img, curr_keypts.at(i) * mag, 2, mapping_color, -1);
         }
         else {
-            cv::circle(img, curr_keypts.at(i).pt * mag, 2, localization_color_, -1);
+            cv::circle(img, curr_keypts.at(i) * mag, 2, localization_color_, -1);
         }
 
         ++num_tracked;
@@ -191,7 +191,7 @@ void frame_publisher::draw_markers2d(cv::Mat& img, const std::vector<data::marke
 void frame_publisher::update(const std::vector<std::shared_ptr<data::landmark>>& curr_lms,
                              bool mapping_is_enabled,
                              tracker_state_t tracking_state,
-                             std::vector<cv::KeyPoint>& keypts,
+                             std::vector<cv::Point2f>& keypts,
                              std::vector<data::marker2d>& mkrs2d,
                              const cv::Mat& img,
                              double tracking_time_elapsed_ms,

@@ -42,7 +42,7 @@ public:
     void update(const std::vector<std::shared_ptr<data::landmark>>& curr_lms,
                 bool mapping_is_enabled,
                 tracker_state_t tracking_state,
-                std::vector<cv::KeyPoint>& keypts,
+                std::vector<cv::Point2f>& keypts,
                 std::vector<data::marker2d>& mkrs2d,
                 const cv::Mat& img,
                 double tracking_time_elapsed_ms,
@@ -56,13 +56,13 @@ public:
 
     std::string get_tracking_state();
 
-    std::vector<cv::KeyPoint> get_keypoints();
+    std::vector<cv::Point2f> get_keypoints();
 
     bool get_mapping_is_enabled();
 
     std::vector<std::shared_ptr<data::landmark>> get_landmarks();
 
-    std::pair<std::vector<cv::KeyPoint>, std::vector<std::shared_ptr<data::landmark>>> get_keypoints_and_landmarks();
+    std::pair<std::vector<cv::Point2f>, std::vector<std::shared_ptr<data::landmark>>> get_keypoints_and_landmarks();
 
     cv::Mat get_image();
 
@@ -71,7 +71,7 @@ public:
     double get_extraction_time_elapsed_ms();
 
 protected:
-    unsigned int draw_tracked_points(cv::Mat& img, const std::vector<cv::KeyPoint>& curr_keypts,
+    unsigned int draw_tracked_points(cv::Mat& img, const std::vector<cv::Point2f>& curr_keypts,
                                      const std::vector<std::shared_ptr<data::landmark>>& curr_lms,
                                      const bool mapping_is_enabled,
                                      const float mag = 1.0) const;
@@ -100,7 +100,7 @@ protected:
     tracker_state_t tracking_state_;
 
     //! current keypoints
-    std::vector<cv::KeyPoint> curr_keypts_;
+    std::vector<cv::Point2f> curr_keypts_;
 
     std::vector<data::marker2d> curr_mkrs2d_;
 

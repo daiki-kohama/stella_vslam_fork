@@ -21,16 +21,18 @@ struct frame_observation {
 
     //! descriptors
     cv::Mat descriptors_;
-    //! descriptors for LightGlue
-    std::vector<std::vector<double>> lg_descriptors_;
+    //! descriptors for deep learning based feature extractor
+    std::vector<std::vector<float>> dl_descriptors_;
     //! undistorted keypoints of monocular or stereo left image
     std::vector<cv::KeyPoint> undist_keypts_;
-    //! keypoints for LightGlue
-    std::vector<cv::Point2f> lg_keypts_;
+    //! keypoints for deep learning based feature extractor
+    std::vector<cv::Point2f> dl_keypts_;
+    //! valid indices of keypoints for deep learning based feature extractor
+    std::unordered_set<unsigned int> dl_valid_indices_;
     //! bearing vectors
     eigen_alloc_vector<Vec3_t> bearings_;
-    //! bearing vectors for LightGlue
-    eigen_alloc_vector<Vec3_t> lg_bearings_;
+    //! bearing vectors for deep learning based feature extractor
+    eigen_alloc_vector<Vec3_t> dl_bearings_;
     //! disparities
     std::vector<float> stereo_x_right_;
     //! depths

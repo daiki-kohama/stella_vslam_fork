@@ -65,7 +65,7 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
     frm_vtx->setFixed(false);
     optimizer.addVertex(frm_vtx);
 
-    const unsigned int num_keypts = frm_obs.lg_keypts_.size();
+    const unsigned int num_keypts = frm_obs.dl_keypts_.size();
     outlier_flags.resize(num_keypts);
     std::fill(outlier_flags.begin(), outlier_flags.end(), false);
 
@@ -96,7 +96,7 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
         ++num_init_obs;
 
         // Connect the frame and the landmark vertices using the projection edges
-        const auto& lg_keypt = frm_obs.lg_keypts_.at(idx);
+        const auto& lg_keypt = frm_obs.dl_keypts_.at(idx);
         const float x_right = frm_obs.stereo_x_right_.empty() ? -1.0f : frm_obs.stereo_x_right_.at(idx);
         const float inv_sigma_sq = 1;
         const auto sqrt_chi_sq = (camera->setup_type_ == camera::setup_type_t::Monocular)
@@ -180,7 +180,7 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
     return num_init_obs - num_bad_obs;
 }
 
-unsigned int pose_optimizer_g2o::optimize_matched_scores(const data::frame& frm, Mat44_t& optimized_pose, std::vector<bool>& outlier_flags, std::vector<double>& matched_scores) const {
+unsigned int pose_optimizer_g2o::optimize_matched_scores(const data::frame& frm, Mat44_t& optimized_pose, std::vector<bool>& outlier_flags, std::vector<float>& matched_scores) const {
     const Mat44_t cam_pose_cw = frm.get_pose_cw();
     const data::frame_observation frm_obs = frm.frm_obs_;
     const feature::orb_params* orb_params = frm.orb_params_;
@@ -209,7 +209,7 @@ unsigned int pose_optimizer_g2o::optimize_matched_scores(const data::frame& frm,
     frm_vtx->setFixed(false);
     optimizer.addVertex(frm_vtx);
 
-    const unsigned int num_keypts = frm_obs.lg_keypts_.size();
+    const unsigned int num_keypts = frm_obs.dl_keypts_.size();
     outlier_flags.resize(num_keypts);
     std::fill(outlier_flags.begin(), outlier_flags.end(), false);
 
@@ -240,7 +240,7 @@ unsigned int pose_optimizer_g2o::optimize_matched_scores(const data::frame& frm,
         ++num_init_obs;
 
         // Connect the frame and the landmark vertices using the projection edges
-        const auto& lg_keypt = frm_obs.lg_keypts_.at(idx);
+        const auto& lg_keypt = frm_obs.dl_keypts_.at(idx);
         const float x_right = frm_obs.stereo_x_right_.empty() ? -1.0f : frm_obs.stereo_x_right_.at(idx);
         const float inv_sigma_sq = matched_scores.at(idx) * matched_scores.at(idx);
         const auto sqrt_chi_sq = (camera->setup_type_ == camera::setup_type_t::Monocular)

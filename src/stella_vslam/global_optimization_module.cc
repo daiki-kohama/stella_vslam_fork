@@ -424,9 +424,9 @@ void global_optimization_module::replace_duplicated_landmarks(const std::vector<
                 if (lm_in_curr->id_ != curr_match_lm_in_cand->id_) {
                     replaced_lms[lm_in_curr] = curr_match_lm_in_cand;
                     lm_in_curr->replace(curr_match_lm_in_cand, map_db_);
-                    if (!curr_match_lm_in_cand->has_representative_descriptor()) {
-                        curr_match_lm_in_cand->compute_descriptor();
-                    }
+                    // if (!curr_match_lm_in_cand->has_representative_descriptor()) {
+                    //     curr_match_lm_in_cand->compute_descriptor();
+                    // }
                     if (!curr_match_lm_in_cand->has_valid_prediction_parameters()) {
                         curr_match_lm_in_cand->update_mean_normal_and_obs_scale_variance();
                     }
@@ -467,7 +467,7 @@ void global_optimization_module::replace_duplicated_landmarks(const std::vector<
             const auto& lm = best_idx_lm.second;
             lm->connect_to_keyframe(neighbor, best_idx);
             lm->update_mean_normal_and_obs_scale_variance();
-            lm->compute_descriptor();
+            // lm->compute_descriptor();
         }
 
         // if any landmark duplication is found, replace it

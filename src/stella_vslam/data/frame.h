@@ -142,9 +142,9 @@ public:
 
     void set_landmarks(const std::vector<std::shared_ptr<landmark>>& landmarks);
 
-    void add_match_score(const unsigned int ref_frm_id, const std::vector<double>& match_score);
+    void add_match_score(const unsigned int ref_frm_id, const std::vector<float>& match_score);
 
-    std::vector<std::pair<unsigned int, double>> get_match_score(const unsigned int idx);
+    std::vector<std::pair<unsigned int, float>> get_match_score(const unsigned int idx);
 
     /**
      * Get keypoint indices in the cell which reference point is located
@@ -198,7 +198,7 @@ private:
     std::unordered_map<std::shared_ptr<landmark>, unsigned int> landmarks_idx_map_;
 
     //! match scores (frame ID, score) for each keypoint
-    std::vector<std::vector<std::pair<unsigned int, double>>> match_scores_;
+    std::vector<std::vector<std::pair<unsigned int, float>>> match_scores_;
 
     //! camera pose: world -> camera
     bool pose_is_valid_ = false;

@@ -110,9 +110,9 @@ unsigned int local_map_cleaner::remove_redundant_keyframes(const std::shared_ptr
                 if (lm->will_be_erased()) {
                     continue;
                 }
-                if (!lm->has_representative_descriptor()) {
-                    lm->compute_descriptor();
-                }
+                // if (!lm->has_representative_descriptor()) {
+                //     lm->compute_descriptor();
+                // }
                 if (!lm->has_valid_prediction_parameters()) {
                     lm->update_mean_normal_and_obs_scale_variance();
                 }
@@ -158,7 +158,7 @@ void local_map_cleaner::count_redundant_observations(const std::shared_ptr<data:
         }
 
         // `keyfrm` observes `lm` with the scale level `scale_level`
-        const auto scale_level = keyfrm->frm_obs_.undist_keypts_.at(idx).octave;
+        // const auto scale_level = keyfrm->frm_obs_.undist_keypts_.at(idx).octave;
         // get observers of `lm`
         const auto observations = lm->get_observations();
 
@@ -174,18 +174,25 @@ void local_map_cleaner::count_redundant_observations(const std::shared_ptr<data:
             }
 
             // `ngh_keyfrm` observes `lm` with the scale level `ngh_scale_level`
-            const auto ngh_scale_level = ngh_keyfrm->frm_obs_.undist_keypts_.at(obs.second).octave;
+            // const auto ngh_scale_level = ngh_keyfrm->frm_obs_.undist_keypts_.at(obs.second).octave;
 
             // compare the scale levels
-            if (ngh_scale_level <= scale_level + 1) {
-                // the observation by `ngh_keyfrm` is more reliable than `keyfrm`
-                ++num_better_obs;
-                if (num_better_obs_thr <= num_better_obs) {
-                    // if the number of the better observations is greater than the threshold,
-                    // consider the observation of `lm` by `keyfrm` is redundant
-                    obs_by_keyfrm_is_redundant = true;
-                    break;
-                }
+            // if (ngh_scale_level <= scale_level + 1) {
+            //     // the observation by `ngh_keyfrm` is more reliable than `keyfrm`
+            //     ++num_better_obs;
+            //     if (num_better_obs_thr <= num_better_obs) {
+            //         // if the number of the better observations is greater than the threshold,
+            //         // consider the observation of `lm` by `keyfrm` is redundant
+            //         obs_by_keyfrm_is_redundant = true;
+            //         break;
+            //     }
+            // }
+            ++num_better_obs;
+            if (num_better_obs_thr <= num_better_obs) {
+                // if the number of the better observations is greater than the threshold,
+                // consider the observation of `lm` by `keyfrm` is redundant
+                obs_by_keyfrm_is_redundant = true;
+                break;
             }
         }
 
