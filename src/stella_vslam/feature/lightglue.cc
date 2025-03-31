@@ -48,7 +48,7 @@ dl_extractor::dl_extractor(const std::string& model_path, const std::vector<std:
         session_options.AppendExecutionProvider_CUDA(cuda_options);
     }
 #endif
-    session_ = Ort::Session(env_, model_path, session_options);
+    session_ = Ort::Session(env_, model_path.c_str(), session_options);
 }
 
 void dl_extractor::run(std::vector<cv::_InputArray>& in_images,
@@ -183,7 +183,7 @@ lg_matcher::lg_matcher(const std::string& model_path, const bool use_cuda) {
         session_options.AppendExecutionProvider_CUDA(cuda_options);
     }
 #endif
-    session_ = Ort::Session(env_, model_path, session_options);
+    session_ = Ort::Session(env_, model_path.c_str(), session_options);
 }
 
 unsigned int lg_matcher::run(std::vector<std::vector<cv::Point2f>>& imgs_keypts,

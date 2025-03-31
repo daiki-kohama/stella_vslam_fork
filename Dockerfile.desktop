@@ -190,6 +190,7 @@ RUN set -x && \
   rm -rf onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}.tgz && \
   export LD_LIBRARY_PATH=/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}/lib:${LD_LIBRARY_PATH}
 ENV ONNXRUNTIME_DIR=/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}
+ENV LD_LIBRARY_PATH="/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}/lib:$LD_LIBRARY_PATH"
 
 # backward-cpp
 ARG BACKWARD_CPP_COMMIT=5ffb2c879ebdbea3bdb8477c671e32b1c984beaa
@@ -242,7 +243,7 @@ RUN set -x && \
   cd /tmp && \
   rm -rf *
 
-ARG EXAMPLES_COMMIT=618df53bdfeb22ccca55fc19b3369d78b8061084
+ARG EXAMPLES_COMMIT=8ed0790d96bd2dca477ee5f40d4edc40bad72fd3
 WORKDIR /
 RUN set -x && \
   git clone https://github.com/daiki-kohama/stella_vslam_examples && \
