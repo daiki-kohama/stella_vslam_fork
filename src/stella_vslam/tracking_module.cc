@@ -447,8 +447,19 @@ bool tracking_module::optimize_current_frame_with_local_map(unsigned int& num_tr
     // optimize the pose
     Mat44_t optimized_pose;
     std::vector<bool> outlier_flags;
-    // TODO: optimization with matching score of LightGlue
-    pose_optimizer_->optimize(curr_frm_, optimized_pose, outlier_flags);
+    std::vector<float> matched_avg_scores(curr_frm_.frm_obs_.dl_keypts_.size(), 0.0);
+    for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.dl_keypts_.size(); ++idx) {
+        const auto& frame_id_and_scores = curr_frm_.get_match_score(idx);
+        if (frame_id_and_scores.empty()) {
+            continue;
+        }
+        float avg_score = 0.0;
+        for (const auto& frame_id_and_score : frame_id_and_scores) {
+            avg_score += frame_id_and_score.second;
+        }
+        matched_avg_scores.at(idx) = avg_score / frame_id_and_scores.size();
+    }
+    pose_optimizer_->optimize_matched_scores(curr_frm_, optimized_pose, outlier_flags, matched_avg_scores);
     curr_frm_.set_pose_cw(optimized_pose);
 
     // Reject outliers
