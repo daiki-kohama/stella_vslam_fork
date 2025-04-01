@@ -235,7 +235,6 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
             const auto keyfrm_vtx = keyfrm_vtx_container.get_vertex(keyfrm);
             const auto& undist_keypt = keyfrm->frm_obs_.dl_keypts_.at(idx);
             const float x_right = keyfrm->frm_obs_.stereo_x_right_.empty() ? -1.0f : keyfrm->frm_obs_.stereo_x_right_.at(idx);
-            std::cout << "IN local_bundle_adjuster_g2o::optimize; keyfrm->id_: " << keyfrm->id_ << ", idx: " << idx << ", local_lm->id_: " << local_lm->id_ << std::endl;
             const float inv_sigma_sq = local_lm->get_keyfrm_avg_score(keyfrm) * local_lm->get_keyfrm_avg_score(keyfrm);
             const auto sqrt_chi_sq = (keyfrm->camera_->setup_type_ == camera::setup_type_t::Monocular)
                                          ? sqrt_chi_sq_2D

@@ -109,8 +109,6 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
         optimizer.addEdge(pose_opt_edge_wrap.edge_);
     }
 
-    std::cout << "num_init_obs: " << num_init_obs << std::endl;
-
     if (num_init_obs < 5) {
         return 0;
     }
@@ -163,8 +161,6 @@ unsigned int pose_optimizer_g2o::optimize(const Mat44_t& cam_pose_cw, const data
                 edge->setRobustKernel(nullptr);
             }
         }
-
-        std::cout << "After trial " << trial << ": " << num_init_obs - num_bad_obs << " inliers" << std::endl;
 
         if (num_init_obs - num_bad_obs < 5) {
             break;
@@ -253,8 +249,6 @@ unsigned int pose_optimizer_g2o::optimize_matched_scores(const data::frame& frm,
         optimizer.addEdge(pose_opt_edge_wrap.edge_);
     }
 
-    std::cout << "num_init_obs: " << num_init_obs << std::endl;
-
     if (num_init_obs < 5) {
         return 0;
     }
@@ -307,8 +301,6 @@ unsigned int pose_optimizer_g2o::optimize_matched_scores(const data::frame& frm,
                 edge->setRobustKernel(nullptr);
             }
         }
-
-        std::cout << "After trial " << trial << ": " << num_init_obs - num_bad_obs << " inliers" << std::endl;
 
         if (num_init_obs - num_bad_obs < 5) {
             break;

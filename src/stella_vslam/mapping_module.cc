@@ -339,7 +339,6 @@ void mapping_module::create_new_landmarks(std::atomic<bool>& abort_create_new_la
 
 void mapping_module::triangulate_with_two_keyframes(const std::shared_ptr<data::keyframe>& keyfrm_1, const std::shared_ptr<data::keyframe>& keyfrm_2,
                                                     const std::vector<std::pair<unsigned int, unsigned int>>& matches, const std::vector<float>& match_scores) {
-    std::cout << "IN mapping_module::triangulate_with_two_keyframes; keyfrm_1: " << keyfrm_1->id_ << ", keyfrm_2: " << keyfrm_2->id_ << std::endl;
     std::lock_guard<std::mutex> lock(data::map_database::mtx_database_);
     const module::two_view_triangulator triangulator(keyfrm_1, keyfrm_2, 1.0);
 
@@ -415,7 +414,6 @@ void mapping_module::update_new_keyframe() {
 
 void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr<data::keyframe>>& fuse_tgt_keyfrms,
                                                nondeterministic::unordered_map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>>& replaced_lms) {
-    std::cout << "IN mapping_module::fuse_landmark_duplication" << std::endl;
     // match::fuse fuse_matcher(0.6);
     match::lightglue lg_matching(0.95, false, lg_matcher_);
 
@@ -426,7 +424,6 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
         // then, add matches and solve duplication
         auto cur_landmarks = cur_keyfrm_->get_landmarks();
         for (const auto& fuse_tgt_keyfrm : fuse_tgt_keyfrms) {
-            std::cout << "fuse_tgt_keyfrm: " << fuse_tgt_keyfrm->id_ << std::endl;
             // std::unordered_map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>> duplicated_lms_in_keyfrm;
             std::map<std::shared_ptr<data::landmark>, std::shared_ptr<data::landmark>, id_less<std::shared_ptr<data::landmark>>> duplicated_lms_in_keyfrm;
             std::unordered_map<unsigned int, std::shared_ptr<data::landmark>> new_connections;
@@ -436,7 +433,6 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
             // fuse_matcher.detect_duplication(fuse_tgt_keyfrm, rot_cw, trans_cw, cur_landmarks, 3.0, duplicated_lms_in_keyfrm, new_connections, true);
             lg_matching.detect_duplication(fuse_tgt_keyfrm, rot_cw, trans_cw, cur_landmarks, 3.0, duplicated_lms_in_keyfrm, new_connections, new_connections_score, true);
 
-            std::cout << "replace landmarks; duplicated_lms_in_keyfrm.size(): " << duplicated_lms_in_keyfrm.size() << std::endl;
             // There is association between the 3D point and the keyframe
             // -> Duplication exists
             for (const auto& lms_pair : duplicated_lms_in_keyfrm) {
@@ -461,7 +457,6 @@ void mapping_module::fuse_landmark_duplication(const std::vector<std::shared_ptr
                 }
             }
 
-            std::cout << "new connections; new_connections.size(): " << new_connections.size() << std::endl;
             for (const auto& best_idx_lm : new_connections) {
                 const auto& best_idx = best_idx_lm.first;
                 auto lm = best_idx_lm.second;

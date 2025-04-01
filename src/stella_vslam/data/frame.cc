@@ -18,13 +18,18 @@ namespace data {
 frame::frame(unsigned int frame_id, const double timestamp, camera::base* camera, feature::orb_params* orb_params,
              const frame_observation frm_obs, const std::unordered_map<unsigned int, marker2d>& markers_2d, const cv::Mat& image)
     : id_(frame_id), timestamp_(timestamp), camera_(camera), orb_params_(orb_params), frm_obs_(frm_obs),
-      markers_2d_(markers_2d), image_(image),
+      markers_2d_(markers_2d), image_(image.clone()),
       // Initialize association with 3D points
       landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.dl_keypts_.size(), nullptr)) {
     match_scores_.resize(frm_obs_.dl_keypts_.size());
     cv::Mat image_with_keypoints = image.clone();
-    for (const auto& keypt : frm_obs_.dl_keypts_) {
-        cv::circle(image_with_keypoints, keypt, 2, cv::Scalar(255, 0, 0), 2);
+    for (unsigned int idx = 0; idx < frm_obs_.dl_keypts_.size(); ++idx) {
+        const auto& keypt = frm_obs_.dl_keypts_.at(idx);
+        if (frm_obs_.dl_valid_indices_.count(idx)) {
+            cv::circle(image_with_keypoints, keypt, 2, cv::Scalar(255, 0, 0), 2);
+        } else {
+            cv::circle(image_with_keypoints, keypt, 2, cv::Scalar(0, 0, 255), 2);
+        }
     }
     cv::imwrite("keypoints_" + std::to_string(id_) + ".jpg", image_with_keypoints);
 }

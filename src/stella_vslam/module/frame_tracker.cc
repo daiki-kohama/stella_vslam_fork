@@ -190,19 +190,17 @@ bool frame_tracker::lightglue_keyframe_match_based_track(data::frame& curr_frm, 
     std::vector<float> matched_scores_in_curr;
     auto num_matches = lg_matching.match_frame_and_keyframe(curr_frm, ref_keyfrm, matched_lms_in_curr, matched_scores_in_curr, use_fixed_seed_);
 
-    std::cout << "lg_matching.match_frame_and_keyframe(curr_frm.id_: " << curr_frm.id_ << ", ref_keyfrm.id_: " << ref_keyfrm->id_ << ", num_matches: " << num_matches << std::endl;
-
-    {
-        cv::Mat img = curr_frm.image_.clone();
-        for (unsigned int idx = 0; idx < matched_lms_in_curr.size(); ++idx) {
-            if (!matched_lms_in_curr.at(idx)) {
-                continue;
-            }
-            cv::circle(img, curr_frm.frm_obs_.dl_keypts_.at(idx), 2, cv::Scalar(255, 0, 0), 2);
-            cv::putText(img, std::to_string(matched_scores_in_curr.at(idx)), curr_frm.frm_obs_.dl_keypts_.at(idx), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1);
-        }
-        cv::imwrite("lg_match_track_lms_" + std::to_string(curr_frm.id_) + ".jpg", img);
-    }
+    // {
+    //     cv::Mat img = curr_frm.image_.clone();
+    //     for (unsigned int idx = 0; idx < matched_lms_in_curr.size(); ++idx) {
+    //         if (!matched_lms_in_curr.at(idx)) {
+    //             continue;
+    //         }
+    //         cv::circle(img, curr_frm.frm_obs_.dl_keypts_.at(idx), 2, cv::Scalar(255, 0, 0), 2);
+    //         cv::putText(img, std::to_string(matched_scores_in_curr.at(idx)), curr_frm.frm_obs_.dl_keypts_.at(idx), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1);
+    //     }
+    //     cv::imwrite("lg_match_track_lms_" + std::to_string(curr_frm.id_) + ".jpg", img);
+    // }
 
     if (num_matches < num_matches_thr_) {
         spdlog::debug("lightglue match based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
@@ -223,25 +221,25 @@ bool frame_tracker::lightglue_keyframe_match_based_track(data::frame& curr_frm, 
     // Discard the outliers
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
-    {
-        cv::Mat img = curr_frm.image_.clone();
-        const Mat33_t rot_cw = curr_frm.get_rot_cw();
-        const Vec3_t trans_cw = curr_frm.get_trans_cw();
-        for (const auto& lm : curr_frm.get_landmarks()) {
-            if (!lm) {
-                continue;
-            }
-            if (lm->will_be_erased()) {
-                continue;
-            }
-            const Vec3_t pos_w = lm->get_pos_in_world();
-            Vec2_t reproj;
-            float x_right;
-            curr_frm.camera_->reproject_to_image(rot_cw, trans_cw, pos_w, reproj, x_right);
-            cv::circle(img, cv::Point2f(reproj(0), reproj(1)), 2, cv::Scalar(255, 0, 0), 2);
-        }
-        cv::imwrite("lg_match_track_succeed_lms_" + std::to_string(curr_frm.id_) + ".jpg", img);
-    }
+    // {
+    //     cv::Mat img = curr_frm.image_.clone();
+    //     const Mat33_t rot_cw = curr_frm.get_rot_cw();
+    //     const Vec3_t trans_cw = curr_frm.get_trans_cw();
+    //     for (const auto& lm : curr_frm.get_landmarks()) {
+    //         if (!lm) {
+    //             continue;
+    //         }
+    //         if (lm->will_be_erased()) {
+    //             continue;
+    //         }
+    //         const Vec3_t pos_w = lm->get_pos_in_world();
+    //         Vec2_t reproj;
+    //         float x_right;
+    //         curr_frm.camera_->reproject_to_image(rot_cw, trans_cw, pos_w, reproj, x_right);
+    //         cv::circle(img, cv::Point2f(reproj(0), reproj(1)), 2, cv::Scalar(255, 0, 0), 2);
+    //     }
+    //     cv::imwrite("lg_match_track_succeed_lms_" + std::to_string(curr_frm.id_) + ".jpg", img);
+    // }
 
     if (num_valid_matches < num_matches_thr_) {
         spdlog::debug("lightglue match based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);

@@ -147,10 +147,6 @@ void landmark::erase_observation(map_database* map_db, const std::shared_ptr<key
         }
 
         observations_.erase(keyfrm);
-        std::cout << "landmark::erase_observation: " << id_ << " " << keyfrm->id_ << std::endl;
-        for (const auto& lm : observations_) {
-            std::cout << "  " << lm.first.lock()->id_ << std::endl;
-        }
 
         has_valid_prediction_parameters_ = false;
         has_representative_descriptor_ = false;
@@ -313,14 +309,6 @@ void landmark::compute_mean_normal(const observations_t& observations,
                                    const Vec3_t& pos_w,
                                    Vec3_t& mean_normal) const {
     mean_normal = Vec3_t::Zero();
-    std::cout << "landmark->id_: " << id_ << std::endl;
-    for (const auto& observation : observations) {
-        auto keyfrm = observation.first.lock();
-        if (!keyfrm) {
-            continue;
-        }
-        std::cout << "  keyfrm->id_: " << keyfrm->id_ << std::endl;
-    }
     for (const auto& observation : observations) {
         auto keyfrm = observation.first.lock();
         const Vec3_t normal = pos_w - keyfrm->get_trans_wc();

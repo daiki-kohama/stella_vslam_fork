@@ -404,7 +404,7 @@ data::frame system::create_monocular_frame(const cv::Mat& img, const double time
         frm_obs.dl_descriptors_ = imgs_dl_descs.at(0);
         frm_obs.dl_valid_indices_ = imgs_valid_indices.at(0);
     }
-    std::cout << "dl_keypts_.size(): " << dl_keypts_.size() << std::endl;
+    std::cout << "frm_obs.dl_valid_indices_.size(): " << frm_obs.dl_valid_indices_.size() << std::endl;
 
     frm_obs.dl_keypts_ = dl_keypts_;
 

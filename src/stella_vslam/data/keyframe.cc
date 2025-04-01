@@ -421,7 +421,6 @@ void keyframe::compute_bow(bow_vocabulary* bow_vocab) {
 
 void keyframe::add_landmark(std::shared_ptr<landmark> lm, const unsigned int idx) {
     std::lock_guard<std::mutex> lock(mtx_observations_);
-    std::cout << "keyframe.add_landmark: " << id_ << " " << idx << " " << lm->id_ << std::endl;
     landmarks_.at(idx) = lm;
 }
 
@@ -447,7 +446,6 @@ void keyframe::erase_landmark(const std::shared_ptr<landmark>& lm) {
 void keyframe::update_landmarks(data::frame& frm,
                                 std::unordered_map<unsigned int, std::shared_ptr<data::keyframe>>& keyfrm_src_frm_id_map) {
     std::lock_guard<std::mutex> lock(mtx_observations_);
-    std::cout << "IN keyframe::update_landmarks: " << id_ << std::endl;
     for (unsigned int idx = 0; idx < landmarks_.size(); ++idx) {
         auto lm = landmarks_.at(idx);
         if (!lm) {

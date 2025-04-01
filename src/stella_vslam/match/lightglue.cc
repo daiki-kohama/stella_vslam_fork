@@ -13,8 +13,6 @@ namespace match {
 
 unsigned int lightglue::match_frame_and_frame(data::frame& frm_1, data::frame& frm_2, std::vector<cv::Point2f>& prev_matched_pts,
                                               std::vector<int>& matched_indices_2_in_frm_1, std::vector<float>& matched_scores_2_in_frm_1) {
-    std::cout << "IN match::lightglue::match_frame_and_frame" << std::endl;
-
     unsigned int num_matches = 0;
 
     matched_indices_2_in_frm_1 = std::vector<int>(frm_1.frm_obs_.dl_keypts_.size(), -1);
@@ -164,8 +162,6 @@ unsigned int lightglue::match_current_and_last_frames(data::frame& curr_frm, con
 unsigned int lightglue::match_frame_and_keyframe(data::frame& frm, const std::shared_ptr<data::keyframe>& keyfrm,
                                                  std::vector<std::shared_ptr<data::landmark>>& matched_lms_in_frm, std::vector<float>& matched_scores_in_frm,
                                                  bool use_fixed_seed) {
-    std::cout << "IN match::lightglue::match_frame_and_keyframe" << std::endl;
-
     // Initialization
     const auto num_frm_keypts = frm.frm_obs_.dl_keypts_.size();
     const auto keyfrm_lms = keyfrm->get_landmarks();
@@ -188,29 +184,29 @@ unsigned int lightglue::match_frame_and_keyframe(data::frame& frm, const std::sh
     }
     frm.add_match_score(keyfrm->src_frm_id_, matched_scores_in_frm);
 
-    cv::Mat img_matches;
-    cv::vconcat(frm.image_, keyfrm->image_, img_matches);
-    for (const auto& pair : matched_idx_pairs) {
-        const auto idx_1 = pair.first;
-        const auto idx_2 = pair.second;
-        cv::circle(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), 2, cv::Scalar(255, 0, 0));
-        cv::circle(img_matches, keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), 2, cv::Scalar(255, 0, 0));
-        cv::line(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), cv::Scalar(0, 255, 0));
-    }
-    cv::imwrite("matches.jpg", img_matches);
+    // cv::Mat img_matches;
+    // cv::vconcat(frm.image_, keyfrm->image_, img_matches);
+    // for (const auto& pair : matched_idx_pairs) {
+    //     const auto idx_1 = pair.first;
+    //     const auto idx_2 = pair.second;
+    //     cv::circle(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), 2, cv::Scalar(255, 0, 0));
+    //     cv::circle(img_matches, keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), 2, cv::Scalar(255, 0, 0));
+    //     cv::line(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), cv::Scalar(0, 255, 0));
+    // }
+    // cv::imwrite("matches.jpg", img_matches);
 
     std::vector<std::pair<int, int>> matches;
     keypoint_landmark_match(frm.frm_obs_, keyfrm, matched_idx_pairs, matches);
 
-    cv::vconcat(frm.image_, keyfrm->image_, img_matches);
-    for (const auto& pair : matches) {
-        const auto idx_1 = pair.first;
-        const auto idx_2 = pair.second;
-        cv::circle(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), 2, cv::Scalar(255, 0, 0));
-        cv::circle(img_matches, keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), 2, cv::Scalar(255, 0, 0));
-        cv::line(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), cv::Scalar(0, 255, 0));
-    }
-    cv::imwrite("matches_klmatch.jpg", img_matches);
+    // cv::vconcat(frm.image_, keyfrm->image_, img_matches);
+    // for (const auto& pair : matches) {
+    //     const auto idx_1 = pair.first;
+    //     const auto idx_2 = pair.second;
+    //     cv::circle(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), 2, cv::Scalar(255, 0, 0));
+    //     cv::circle(img_matches, keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), 2, cv::Scalar(255, 0, 0));
+    //     cv::line(img_matches, frm.frm_obs_.dl_keypts_.at(idx_1), keyfrm->frm_obs_.dl_keypts_.at(idx_2) + cv::Point2f(0, frm.image_.rows), cv::Scalar(0, 255, 0));
+    // }
+    // cv::imwrite("matches_klmatch.jpg", img_matches);
 
     // Extract only inliers with RANSAC
     solve::essential_solver solver(frm.frm_obs_.dl_bearings_, keyfrm->frm_obs_.dl_bearings_, matches, use_fixed_seed);
@@ -294,7 +290,6 @@ unsigned int lightglue::match_for_triangulation(const std::shared_ptr<data::keyf
                                                 std::vector<std::pair<unsigned int, unsigned int>>& matched_idx_pairs,
                                                 std::vector<float>& matched_scores_in_keyfrm_1,
                                                 const float residual_rad_thr) {
-    std::cout << "IN match::lightglue::match_for_triangulation; keyfrm_1: " << keyfrm_1->id_ << ", keyfrm_2: " << keyfrm_2->id_ << std::endl;
     unsigned int num_matches = 0;
 
     // Project the center of keyframe 1 to keyframe 2
@@ -396,7 +391,6 @@ unsigned int lightglue::detect_duplication(const std::shared_ptr<data::keyframe>
                                            std::unordered_map<unsigned int, std::shared_ptr<data::landmark>>& new_connections,
                                            std::unordered_map<unsigned int, std::pair<std::shared_ptr<data::keyframe>, float>>& new_connections_score,
                                            bool do_reprojection_matching) {
-    std::cout << "IN match::lightglue::detect_duplication" << std::endl;
     const Vec3_t trans_wc = -rot_cw.transpose() * trans_cw;
     unsigned int num_fused = 0;
     std::unordered_set<unsigned int> already_matched_idx_in_keyfrm;

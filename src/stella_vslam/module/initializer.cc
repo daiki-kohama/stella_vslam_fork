@@ -156,8 +156,6 @@ bool initializer::try_initialize_for_monocular(data::frame& curr_frm) {
     match::lightglue lg_matching(0.9, init_frm_.camera_->model_type_ != camera::model_type_t::Equirectangular, lg_matcher_);
     const auto num_matches_lg = lg_matching.match_frame_and_frame(init_frm_, curr_frm, prev_matched_coords_, init_matches_, init_match_scores_);
 
-    std::cout << "LightGlue matched: " << num_matches_lg << std::endl;
-
     if (num_matches_lg < min_num_valid_pts_) {
         // rebuild the initializer with the next frame
         reset();
@@ -204,7 +202,6 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
 
     // create initial keyframes
     auto init_keyfrm = data::keyframe::make_keyframe(map_db_->next_keyframe_id_++, init_frm_);
-    std::cout << "init_keyfrm->landmarks_.size(): " << init_keyfrm->get_landmarks().size() << std::endl;
     auto curr_keyfrm = data::keyframe::make_keyframe(map_db_->next_keyframe_id_++, curr_frm);
     curr_keyfrm->graph_node_->set_spanning_parent(init_keyfrm);
     init_keyfrm->graph_node_->add_spanning_child(curr_keyfrm);
@@ -314,23 +311,23 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
     // update the current frame pose
     curr_frm.set_pose_cw(curr_keyfrm->get_pose_cw());
 
-    const auto landmarks = init_keyfrm->get_landmarks();
-    cv::Mat init_frm_keypoints = init_frm_.image_.clone();
-    cv::Mat curr_frm_keypoints = curr_frm.image_.clone();
-    for (const auto& lm : landmarks) {
-        if (!lm) {
-            continue;
-        }
-        const Vec3_t pos_w = lm->get_pos_in_world();
-        Vec2_t reproj;
-        float x_right;
-        init_keyfrm->camera_->reproject_to_image(init_keyfrm->get_rot_cw(), init_keyfrm->get_trans_cw(), pos_w, reproj, x_right);
-        cv::circle(init_frm_keypoints, cv::Point(reproj(0), reproj(1)), 2, cv::Scalar(0, 255, 0), 2);
-        curr_keyfrm->camera_->reproject_to_image(curr_keyfrm->get_rot_cw(), curr_keyfrm->get_trans_cw(), pos_w, reproj, x_right);
-        cv::circle(curr_frm_keypoints, cv::Point(reproj(0), reproj(1)), 2, cv::Scalar(0, 255, 0), 2);
-    }
-    cv::imwrite("new_map_lm_" + std::to_string(init_frm_.id_) + ".jpg", init_frm_keypoints);
-    cv::imwrite("new_map_lm_" + std::to_string(curr_frm.id_) + ".jpg", curr_frm_keypoints);
+    // const auto landmarks = init_keyfrm->get_landmarks();
+    // cv::Mat init_frm_keypoints = init_frm_.image_.clone();
+    // cv::Mat curr_frm_keypoints = curr_frm.image_.clone();
+    // for (const auto& lm : landmarks) {
+    //     if (!lm) {
+    //         continue;
+    //     }
+    //     const Vec3_t pos_w = lm->get_pos_in_world();
+    //     Vec2_t reproj;
+    //     float x_right;
+    //     init_keyfrm->camera_->reproject_to_image(init_keyfrm->get_rot_cw(), init_keyfrm->get_trans_cw(), pos_w, reproj, x_right);
+    //     cv::circle(init_frm_keypoints, cv::Point(reproj(0), reproj(1)), 2, cv::Scalar(0, 255, 0), 2);
+    //     curr_keyfrm->camera_->reproject_to_image(curr_keyfrm->get_rot_cw(), curr_keyfrm->get_trans_cw(), pos_w, reproj, x_right);
+    //     cv::circle(curr_frm_keypoints, cv::Point(reproj(0), reproj(1)), 2, cv::Scalar(0, 255, 0), 2);
+    // }
+    // cv::imwrite("new_map_lm_" + std::to_string(init_frm_.id_) + ".jpg", init_frm_keypoints);
+    // cv::imwrite("new_map_lm_" + std::to_string(curr_frm.id_) + ".jpg", curr_frm_keypoints);
 
     spdlog::info("new map created with {} points: frame {} - frame {}", map_db_->get_num_landmarks(), init_frm_.id_, curr_frm.id_);
     state_ = initializer_state_t::Succeeded;
