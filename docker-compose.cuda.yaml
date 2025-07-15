@@ -1,0 +1,31 @@
+services:
+  stella_vslam:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+      args:
+        - "NUM_THREADS=${DOCKER_BUILD_NUM_THREADS}"
+        - "ARCHITECUTRE=${DOCKER_BUILD_ARCHITECTURE}"
+    image: "stella_vslam-cuda"
+    container_name: "${DOCKER_CONTAINER_NAME}"
+    environment:
+      DISPLAY: "${DISPLAY}"
+    volumes:
+      - "${MEDIA_PATH}:/media"
+      - "${VOCAB_PATH}:/vocab:ro"
+      - "${CONFIGS_PATH}:/configs"
+      - "${ONNX_MODEL_PATH}:/onnx_models"
+      - ".:/stella_vslam_ws"
+      - "${PANGOLIN_VIEWER_PATH}:/pangolin_viewer"
+      - "./build_in_docker.cuda.sh:/stella_vslam_examples/build/build_in_docker.cuda.sh"
+      - "/tmp/.X11-unix:/tmp/.X11-unix:ro"
+    # entrypoint: "sh -c './build_in_docker.cuda.sh && exec /bin/bash'"
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

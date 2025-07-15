@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND noninteractive
 
 # install dependencies via apt
@@ -35,6 +35,10 @@ RUN set -x && \
     libavutil-dev \
     libswscale-dev \
     libtbb-dev && \
+  : "ONNX runtime dependencies" && \
+  apt-get install -y -qq \
+    libcudnn9-cuda-12 \
+    libcudnn9-dev-cuda-12 && \
   : "backward-cpp dependencies" && \
   apt install -y -qq binutils-dev && \
   : "other dependencies" && \
@@ -107,7 +111,7 @@ RUN set -x && \
 ENV g2o_DIR=${CMAKE_INSTALL_PREFIX}/lib/cmake/g2o
 
 # OpenCV
-ARG OPENCV_VERSION=4.7.0
+ARG OPENCV_VERSION=4.10.0
 WORKDIR /tmp
 RUN set -x && \
   wget -q https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
@@ -152,6 +156,7 @@ RUN set -x && \
     -DBUILD_opencv_cudaimgproc=ON \
     -DBUILD_opencv_cudawarping=ON \
     -DOPENCV_EXTRA_MODULES_PATH=/tmp/extra \
+    -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-12.4 \
     .. && \
   make -j${NUM_THREADS} && \
   make install && \
@@ -195,6 +200,18 @@ RUN set -x && \
   cd /tmp && \
   rm -rf *
 ENV Pangolin_DIR=${CMAKE_INSTALL_PREFIX}/lib/cmake/Pangolin
+
+# ONNX
+ARG ONNX_VERSION=1.21.0
+ARG ARCHITECUTRE=x64-gpu
+WORKDIR /
+RUN set -x && \
+  wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}.tgz && \
+  tar xf onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}.tgz && \
+  rm -rf onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}.tgz && \
+  export LD_LIBRARY_PATH=/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}/lib:${LD_LIBRARY_PATH}
+ENV ONNXRUNTIME_DIR=/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}
+ENV LD_LIBRARY_PATH="/onnxruntime-linux-${ARCHITECUTRE}-${ONNX_VERSION}/lib:$LD_LIBRARY_PATH"
 
 # backward-cpp
 ARG BACKWARD_CPP_COMMIT=5ffb2c879ebdbea3bdb8477c671e32b1c984beaa
@@ -241,6 +258,8 @@ RUN set -x && \
   cd build && \
   cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DUSE_ONNX_RUNTIME=ON \
+    -DUSE_ONNX_RUNTIME_CUDA=ON \
     .. && \
   make -j${NUM_THREADS} && \
   make install && \
@@ -265,10 +284,10 @@ RUN set -x && \
   cd /tmp && \
   rm -rf *
 
-ARG EXAMPLES_COMMIT=defc69eecc36e51cdda22885bb86954f08ad6887
+ARG EXAMPLES_COMMIT=8ed0790d96bd2dca477ee5f40d4edc40bad72fd3
 WORKDIR /
 RUN set -x && \
-  git clone https://github.com/stella-cv/stella_vslam_examples.git && \
+  git clone https://github.com/daiki-kohama/stella_vslam_examples.git && \
   cd stella_vslam_examples && \
   git checkout -q ${EXAMPLES_COMMIT} && \
   git submodule update --init --recursive && \

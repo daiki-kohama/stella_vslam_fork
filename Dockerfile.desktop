@@ -246,7 +246,7 @@ RUN set -x && \
 ARG EXAMPLES_COMMIT=8ed0790d96bd2dca477ee5f40d4edc40bad72fd3
 WORKDIR /
 RUN set -x && \
-  git clone https://github.com/daiki-kohama/stella_vslam_examples && \
+  git clone https://github.com/daiki-kohama/stella_vslam_examples.git && \
   cd stella_vslam_examples && \
   git checkout -q ${EXAMPLES_COMMIT} && \
   git submodule update --init --recursive && \
