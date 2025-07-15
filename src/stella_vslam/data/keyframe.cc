@@ -297,8 +297,10 @@ nlohmann::json keyframe::to_json() const {
             {"rot_cw", convert_rotation_to_json(pose_cw_.block<3, 3>(0, 0))},
             {"trans_cw", convert_translation_to_json(pose_cw_.block<3, 1>(0, 3))},
             // features and observations
-            {"n_keypts", frm_obs_.undist_keypts_.size()},
-            {"undist_keypts", convert_keypoints_to_json(frm_obs_.undist_keypts_)},
+            {"n_keypts", frm_obs_.dl_keypts_.size()},
+            {"undist_keypts", convert_points_to_json(frm_obs_.dl_keypts_)},
+            {"dl_valid_indices", std::vector<unsigned int>(frm_obs_.dl_valid_indices_.begin(),
+                                                           frm_obs_.dl_valid_indices_.end())},
             {"x_rights", frm_obs_.stereo_x_right_},
             {"depths", frm_obs_.depths_},
             {"descs", convert_descriptors_to_json(frm_obs_.descriptors_)},

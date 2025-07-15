@@ -39,6 +39,14 @@ nlohmann::json convert_keypoints_to_json(const std::vector<cv::KeyPoint>& keypts
     return json_keypts;
 }
 
+nlohmann::json convert_points_to_json(const std::vector<cv::Point2f>& points) {
+    std::vector<nlohmann::json> json_points(points.size());
+    for (unsigned int idx = 0; idx < points.size(); ++idx) {
+        json_points.at(idx) = {{"pt", {points.at(idx).x, points.at(idx).y}}};
+    }
+    return json_points;
+}
+
 std::vector<cv::KeyPoint> convert_json_to_keypoints(const nlohmann::json& json_keypts) {
     std::vector<cv::KeyPoint> keypts(json_keypts.size());
     for (unsigned int idx = 0; idx < json_keypts.size(); ++idx) {

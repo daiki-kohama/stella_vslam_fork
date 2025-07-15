@@ -23,6 +23,8 @@ Vec3_t convert_json_to_translation(const nlohmann::json& json_trans_cw);
 
 nlohmann::json convert_keypoints_to_json(const std::vector<cv::KeyPoint>& keypts);
 
+nlohmann::json convert_points_to_json(const std::vector<cv::Point2f>& points);
+
 std::vector<cv::KeyPoint> convert_json_to_keypoints(const nlohmann::json& json_keypts);
 
 nlohmann::json convert_descriptors_to_json(const cv::Mat& descriptors);
