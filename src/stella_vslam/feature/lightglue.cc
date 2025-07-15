@@ -201,7 +201,7 @@ unsigned int lg_matcher::run(std::vector<std::vector<cv::Point2f>>& imgs_keypts,
     assert(imgs_keypts[0].size() == imgs_valid_indices[0].size());
     assert(imgs_keypts[1].size() == imgs_valid_indices[1].size());
     assert(imgs_keypts[0].size() == imgs_keypts[1].size());
-    assert(imgs_keypts[0].size() == 1024);
+    assert(imgs_keypts[0].size() == 2048);
 
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
