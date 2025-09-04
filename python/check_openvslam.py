@@ -86,6 +86,30 @@ def exec_openvslam(media_root, mapDir):
                     file.write(f"waiting about {wait_time//60} minutes for sharpened video {videoPathReal}\n")
             wait_time += 1
 
+    is_resized = False
+    if cameraModel == "equirectangular" and cols > 3840:
+        newVideoPathReal = os.path.join(os.path.dirname(videoPathReal), "resized.mp4")
+        command = ["ffmpeg -i " + videoPathReal + " -vf scale=3840:-1 " + newVideoPathReal]
+        exec = subprocess.Popen(command, shell=True, encoding='UTF-8', stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+        with open(logPathReal, "a") as file:
+            file.write("-------------------------------\n")
+            file.write(" ".join(command))
+            file.write("\n")
+        while True:
+            line = exec.stdout.readline()
+            with open(logPathReal, "a") as file:
+                file.write(line)
+            if exec.poll() is not None:
+                break
+        is_resized = True
+        videoPathReal = newVideoPathReal
+        with open(configPath) as file:
+            configData = yaml.safe_load(file)
+        configData["Camera"]["cols"] = 3840
+        configData["Camera"]["rows"] = 1920
+        with open(os.path.join(mapDirReal, "config.yaml"), "w") as file:
+            yaml.dump(configData, file, allow_unicode=True)
+
     command = ["./run_video_slam -v " + os.path.join("..", "vocab" ,"orb_vocab.fbow") + " -m " + videoPathReal + " -c " + os.path.join(mapDirReal, "config.yaml") + " --frame-skip " + str(frame_skip) + " -s " + str(start_time) + " --log-level=debug -o " + mapName]
     exec = subprocess.Popen(command, shell=True, encoding='UTF-8', stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
     with open(logPathReal, "a") as file:
@@ -107,6 +131,9 @@ def exec_openvslam(media_root, mapDir):
             if os.path.exists(mapName):
                 break
         shutil.move(mapName, os.path.join(mapDirReal, mapName))
+
+    if is_resized:
+        os.remove(videoPathReal)
 
     with open(os.path.join(mapDirReal, "order.yaml"), "r+") as file:
         orderData = yaml.safe_load(file)
