@@ -3,7 +3,7 @@
 cd /stella_vslam_ws/build && \
 cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DDETRMINISTIC=ON \
+    -DDETERMINISTIC=ON \
     .. && \
 make -j15 && \
 make install
