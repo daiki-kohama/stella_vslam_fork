@@ -94,9 +94,10 @@ system::system(const std::shared_ptr<config>& cfg, const std::string& vocab_file
     const auto min_size = preprocessing_params["min_size"].as<unsigned int>(800);
     const auto desc_type_str = preprocessing_params["descriptor_type"].as<std::string>("ORB");
     const auto desc_type = feature::descriptor_type_from_string(desc_type_str);
-    extractor_left_ = new feature::orb_extractor(orb_params_, min_size, desc_type, mask_rectangles);
+    const auto use_ico_image_pyramid = preprocessing_params["use_ico_image_pyramid"].as<bool>(false);
+    extractor_left_ = new feature::orb_extractor(orb_params_, min_size, desc_type, use_ico_image_pyramid, mask_rectangles);
     if (camera_->setup_type_ == camera::setup_type_t::Stereo) {
-        extractor_right_ = new feature::orb_extractor(orb_params_, min_size, desc_type, mask_rectangles);
+        extractor_right_ = new feature::orb_extractor(orb_params_, min_size, desc_type, use_ico_image_pyramid, mask_rectangles);
     }
 
     num_grid_cols_ = preprocessing_params["num_grid_cols"].as<unsigned int>(64);
