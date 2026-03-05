@@ -210,9 +210,6 @@ void orb_extractor::create_rectangle_mask(const unsigned int cols, const unsigne
     }
     if (use_ico_image_pyramid_) {
         rect_ico_masks_ = create_ico_masks(rect_mask_);
-        for (unsigned int face_idx = 0; face_idx < eqr_ico::IcosahedronUnwrapper::face_count_; ++face_idx) {
-            cv::imwrite(fmt::format("ico_mask_face{}.png", face_idx), rect_ico_masks_.at(face_idx));
-        }
     }
 }
 
