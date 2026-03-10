@@ -13,9 +13,9 @@ namespace stella_vslam {
 namespace data {
 
 frame::frame(unsigned int frame_id, const double timestamp, camera::base* camera, feature::orb_params* orb_params,
-             const frame_observation frm_obs, const std::unordered_map<unsigned int, marker2d>& markers_2d)
+             const frame_observation frm_obs, const std::unordered_map<unsigned int, marker2d>& markers_2d, const cv::Mat& img)
     : id_(frame_id), timestamp_(timestamp), camera_(camera), orb_params_(orb_params), frm_obs_(frm_obs),
-      markers_2d_(markers_2d),
+      markers_2d_(markers_2d), img_(img.clone()),
       // Initialize association with 3D points
       landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.undist_keypts_.size(), nullptr)) {}
 
