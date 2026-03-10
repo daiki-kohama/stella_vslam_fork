@@ -98,6 +98,11 @@ std::shared_ptr<landmark> frame::get_landmark(const unsigned int idx) const {
     return landmarks_.at(idx);
 }
 
+unsigned int frame::get_landmark_idx(const std::shared_ptr<landmark>& lm) const {
+    assert(has_landmark(lm));
+    return landmarks_idx_map_.at(lm);
+}
+
 void frame::erase_landmark_with_index(const unsigned int idx) {
     assert(landmarks_.at(idx));
     landmarks_idx_map_.erase(landmarks_.at(idx));

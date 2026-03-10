@@ -14,6 +14,7 @@
 #include <atomic>
 #include <memory>
 #include <unordered_set>
+#include <opencv2/opencv.hpp>
 
 #include <Eigen/Core>
 
@@ -131,6 +132,8 @@ public:
     void add_landmark(const std::shared_ptr<landmark>&, const unsigned int idx);
 
     std::shared_ptr<landmark> get_landmark(const unsigned int idx) const;
+
+    unsigned int get_landmark_idx(const std::shared_ptr<landmark>& lm) const;
 
     void erase_landmark_with_index(const unsigned int idx);
 
