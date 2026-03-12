@@ -188,6 +188,15 @@ else()
     message(STATUS "Determinism: DISABLED")
 endif()
 
+# Manual keypoint mask UI on keyframe construction
+set(STELLA_VSLAM_MANUAL_KEYPOINT_MASK OFF CACHE BOOL "Enable manual keypoint masking UI in keyframe constructor")
+if(STELLA_VSLAM_MANUAL_KEYPOINT_MASK)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC STELLA_VSLAM_MANUAL_KEYPOINT_MASK)
+    message(STATUS "manual keypoint mask UI: ENABLED")
+else()
+    message(STATUS "manual keypoint mask UI: DISABLED")
+endif()
+
 # Tracy
 set(USE_TRACY OFF CACHE BOOL "Enable tracy")
 if(USE_TRACY)
@@ -224,6 +233,8 @@ target_link_libraries(${PROJECT_NAME}
                       yaml-cpp
                       ${SQLite3_LIBRARIES}
                       opencv_core
+                      "$<$<BOOL:${STELLA_VSLAM_MANUAL_KEYPOINT_MASK}>:opencv_imgproc>"
+                      "$<$<BOOL:${STELLA_VSLAM_MANUAL_KEYPOINT_MASK}>:opencv_highgui>"
                       opencv_features2d
                       opencv_calib3d
                       "$<$<BOOL:${LINK_OBJDETECT}>:opencv_objdetect>"
