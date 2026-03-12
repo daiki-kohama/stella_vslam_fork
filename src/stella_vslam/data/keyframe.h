@@ -14,6 +14,7 @@
 #include <mutex>
 #include <atomic>
 #include <memory>
+#include <unordered_set>
 
 #include <nlohmann/json_fwd.hpp>
 #include <sqlite3.h>
@@ -293,6 +294,9 @@ public:
 
     // //! source frame image
     cv::Mat img_;
+
+    //! indices of keypoints manually marked as unused
+    std::unordered_set<unsigned int> unused_keypt_indices_;
 
 private:
     //-----------------------------------------

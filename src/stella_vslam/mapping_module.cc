@@ -402,6 +402,10 @@ void mapping_module::triangulate_with_two_keyframes(const std::shared_ptr<data::
         const auto idx_1 = matches.at(i).first;
         const auto idx_2 = matches.at(i).second;
 
+        if (keyfrm_1->unused_keypt_indices_.count(idx_1) > 0 || keyfrm_2->unused_keypt_indices_.count(idx_2) > 0) {
+            continue;
+        }
+
         // triangulate between idx_1 and idx_2
         Vec3_t pos_w;
         if (!triangulator.triangulate(idx_1, idx_2, pos_w)) {

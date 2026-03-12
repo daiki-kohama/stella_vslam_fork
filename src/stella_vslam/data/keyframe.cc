@@ -15,6 +15,14 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#ifdef STELLA_VSLAM_MANUAL_KEYPOINT_MASK
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#endif
+
+#include <algorithm>
+#include <string>
+
 namespace {
 using namespace stella_vslam;
 using namespace stella_vslam::data;
@@ -96,6 +104,268 @@ markers2d_from_blob(size_t amount,
     }
     return markers_2d;
 }
+
+#ifdef STELLA_VSLAM_MANUAL_KEYPOINT_MASK
+
+struct manual_keypoint_selector {
+    cv::Mat img;
+    std::vector<cv::KeyPoint> keypts;
+    std::vector<cv::Point> polygon;
+    std::unordered_set<unsigned int> unused_indices;
+    bool done = false;
+
+    cv::Rect btn_apply{10, 0, 170, 36};
+    cv::Rect btn_reset_polygon{190, 0, 190, 36};
+    cv::Rect btn_reset{390, 0, 170, 36};
+    cv::Rect btn_done{570, 0, 170, 36};
+    int panel_height = 48;
+};
+
+inline void draw_button(cv::Mat& canvas, const cv::Rect& rect, const std::string& text, const cv::Scalar& color) {
+    cv::rectangle(canvas, rect, color, cv::FILLED);
+    cv::rectangle(canvas, rect, cv::Scalar(50, 50, 50), 1);
+    cv::putText(canvas, text, cv::Point(rect.x + 8, rect.y + rect.height - 12),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(20, 20, 20), 1, cv::LINE_AA);
+}
+
+cv::Mat render_manual_selector(const manual_keypoint_selector& state) {
+    cv::Mat vis = state.img.clone();
+
+    for (unsigned int idx = 0; idx < state.keypts.size(); ++idx) {
+        const auto& kp = state.keypts.at(idx);
+        const auto pt = cv::Point(static_cast<int>(std::round(kp.pt.x)), static_cast<int>(std::round(kp.pt.y)));
+        const bool unused = state.unused_indices.count(idx) > 0;
+        const auto color = unused ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 220, 0);
+        cv::circle(vis, pt, 2, color, 1, cv::LINE_AA);
+    }
+
+    if (!state.polygon.empty()) {
+        for (size_t i = 0; i < state.polygon.size(); ++i) {
+            cv::circle(vis, state.polygon.at(i), 3, cv::Scalar(0, 255, 255), cv::FILLED, cv::LINE_AA);
+            if (i > 0) {
+                cv::line(vis, state.polygon.at(i - 1), state.polygon.at(i), cv::Scalar(255, 255, 0), 1, cv::LINE_AA);
+            }
+        }
+        if (state.polygon.size() >= 3) {
+            cv::line(vis, state.polygon.back(), state.polygon.front(), cv::Scalar(255, 255, 0), 1, cv::LINE_AA);
+        }
+    }
+
+    cv::Mat canvas(vis.rows + state.panel_height, vis.cols, vis.type(), cv::Scalar(235, 235, 235));
+    vis.copyTo(canvas(cv::Rect(0, 0, vis.cols, vis.rows)));
+
+    manual_keypoint_selector tmp = state;
+    tmp.btn_apply.y = vis.rows + 6;
+    tmp.btn_reset_polygon.y = vis.rows + 6;
+    tmp.btn_reset.y = vis.rows + 6;
+    tmp.btn_done.y = vis.rows + 6;
+
+    draw_button(canvas, tmp.btn_apply, "Apply polygon", cv::Scalar(160, 200, 255));
+    draw_button(canvas, tmp.btn_reset_polygon, "Reset polygon", cv::Scalar(180, 240, 255));
+    draw_button(canvas, tmp.btn_reset, "Reset", cv::Scalar(160, 220, 255));
+    draw_button(canvas, tmp.btn_done, "Done", cv::Scalar(160, 255, 180));
+
+    const auto info = std::string("unused: ") + std::to_string(state.unused_indices.size())
+                      + "  polygon vertices: " + std::to_string(state.polygon.size());
+    int baseline = 0;
+    const auto info_size = cv::getTextSize(info, cv::FONT_HERSHEY_SIMPLEX, 0.6, 1, &baseline);
+    int info_x = tmp.btn_done.x + tmp.btn_done.width + 16;
+    if (info_x + info_size.width > vis.cols - 8) {
+        info_x = std::max(8, vis.cols - info_size.width - 8);
+    }
+    cv::putText(canvas, info, cv::Point(info_x, vis.rows + 30), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(40, 40, 40), 1, cv::LINE_AA);
+
+    return canvas;
+}
+
+void on_manual_selector_mouse(int event, int x, int y, int, void* userdata) {
+    if (userdata == nullptr) {
+        return;
+    }
+
+    auto* state = reinterpret_cast<manual_keypoint_selector*>(userdata);
+    const int image_height = state->img.rows;
+
+    cv::Rect btn_apply = state->btn_apply;
+    cv::Rect btn_reset_polygon = state->btn_reset_polygon;
+    cv::Rect btn_reset = state->btn_reset;
+    cv::Rect btn_done = state->btn_done;
+    btn_apply.y = image_height + 6;
+    btn_reset_polygon.y = image_height + 6;
+    btn_reset.y = image_height + 6;
+    btn_done.y = image_height + 6;
+
+    const cv::Point click(x, y);
+
+    // Right click: apply polygon
+    if (event == cv::EVENT_RBUTTONDOWN) {
+        if (state->polygon.size() >= 3) {
+            std::vector<cv::Point2f> polygon_f;
+            polygon_f.reserve(state->polygon.size());
+            for (const auto& p : state->polygon) {
+                polygon_f.emplace_back(static_cast<float>(p.x), static_cast<float>(p.y));
+            }
+            for (unsigned int idx = 0; idx < state->keypts.size(); ++idx) {
+                const auto& kp = state->keypts.at(idx);
+                if (cv::pointPolygonTest(polygon_f, kp.pt, false) >= 0.0) {
+                    state->unused_indices.insert(idx);
+                }
+            }
+        }
+        state->polygon.clear();
+        return;
+    }
+
+    // Left click: buttons or add polygon vertex
+    if (event != cv::EVENT_LBUTTONDOWN) {
+        return;
+    }
+
+    if (btn_apply.contains(click)) {
+        if (state->polygon.size() >= 3) {
+            std::vector<cv::Point2f> polygon_f;
+            polygon_f.reserve(state->polygon.size());
+            for (const auto& p : state->polygon) {
+                polygon_f.emplace_back(static_cast<float>(p.x), static_cast<float>(p.y));
+            }
+            for (unsigned int idx = 0; idx < state->keypts.size(); ++idx) {
+                const auto& kp = state->keypts.at(idx);
+                if (cv::pointPolygonTest(polygon_f, kp.pt, false) >= 0.0) {
+                    state->unused_indices.insert(idx);
+                }
+            }
+        }
+        state->polygon.clear();
+        return;
+    }
+
+    if (btn_reset_polygon.contains(click)) {
+        state->polygon.clear();
+        return;
+    }
+
+    if (btn_reset.contains(click)) {
+        state->unused_indices.clear();
+        state->polygon.clear();
+        return;
+    }
+
+    if (btn_done.contains(click)) {
+        state->done = true;
+        return;
+    }
+
+    if (0 <= x && x < state->img.cols && 0 <= y && y < state->img.rows) {
+        state->polygon.emplace_back(x, y);
+    }
+}
+
+std::unordered_set<unsigned int> select_unused_keypoint_indices(const cv::Mat& img,
+                                                                 const std::vector<cv::KeyPoint>& keypts,
+                                                                 const unsigned int keyfrm_id,
+                                                                 const unsigned int src_frm_id) {
+    // Skip UI if disabled via environment variable (useful when running from non-main thread)
+    const char* disable_ui_env = std::getenv("STELLA_VSLAM_DISABLE_MANUAL_MASK_UI");
+    if (disable_ui_env != nullptr && std::string(disable_ui_env) == "1") {
+        spdlog::debug("manual keypoint mask UI disabled by environment variable");
+        return {};
+    }
+
+    if (img.empty() || keypts.empty()) {
+        return {};
+    }
+
+    manual_keypoint_selector state;
+    state.unused_indices = std::unordered_set<unsigned int>(); // Explicit initialization
+    state.polygon = std::vector<cv::Point>();
+    state.done = false;
+
+    cv::Mat base_img;
+    if (img.channels() == 1) {
+        cv::cvtColor(img, base_img, cv::COLOR_GRAY2BGR);
+    }
+    else {
+        base_img = img.clone();
+    }
+
+    // Downscale only for display if the image is too large.
+    // (indices are still mapped correctly because keypoints are scaled together)
+    constexpr int max_display_width = 1600;
+    constexpr int max_display_height = 900;
+    const double scale_x = static_cast<double>(max_display_width) / static_cast<double>(base_img.cols);
+    const double scale_y = static_cast<double>(max_display_height) / static_cast<double>(base_img.rows);
+    const double display_scale = std::min(1.0, std::min(scale_x, scale_y));
+
+    if (display_scale < 1.0) {
+        cv::resize(base_img, state.img, cv::Size(), display_scale, display_scale, cv::INTER_AREA);
+        state.keypts = keypts;
+        for (auto& kp : state.keypts) {
+            kp.pt.x = static_cast<float>(kp.pt.x * display_scale);
+            kp.pt.y = static_cast<float>(kp.pt.y * display_scale);
+        }
+    }
+    else {
+        state.img = base_img;
+        state.keypts = keypts;
+    }
+
+    const std::string window_name = std::string("keyframe ") + std::to_string(keyfrm_id)
+                                    + " (src " + std::to_string(src_frm_id) + ") manual keypoint mask";
+    const int initial_window_w = state.img.cols;
+    const int initial_window_h = state.img.rows + state.panel_height;
+    try {
+        cv::namedWindow(window_name, cv::WINDOW_NORMAL);
+        cv::resizeWindow(window_name, initial_window_w, initial_window_h);
+        cv::setMouseCallback(window_name, on_manual_selector_mouse, &state);
+    }
+    catch (const cv::Exception& e) {
+        spdlog::warn("manual keypoint mask UI was skipped: {}", e.what());
+        return {};
+    }
+    catch (const std::exception& e) {
+        spdlog::warn("manual keypoint mask UI failed: {}", e.what());
+        return {};
+    }
+    catch (...) {
+        spdlog::warn("manual keypoint mask UI failed with unknown exception");
+        return {};
+    }
+
+    try {
+        while (!state.done) {
+            const auto canvas = render_manual_selector(state);
+            cv::imshow(window_name, canvas);
+
+            const int key = cv::waitKey(30);
+            if (key == 27 || key == 'd' || key == 'D') {
+                state.done = true;
+            }
+            else if (key == 'r' || key == 'R') {
+                state.unused_indices.clear();
+                state.polygon.clear();
+            }
+            else if ((key == 8 || key == 127) && !state.polygon.empty()) {
+                state.polygon.pop_back();
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        spdlog::warn("manual keypoint mask UI loop failed: {}", e.what());
+    }
+    catch (...) {
+        spdlog::warn("manual keypoint mask UI loop failed with unknown exception");
+    }
+
+    try {
+        cv::destroyWindow(window_name);
+    }
+    catch (...) {
+        // Ignore errors during cleanup
+    }
+
+    return state.unused_indices;
+}
+#endif // STELLA_VSLAM_MANUAL_KEYPOINT_MASK
 } // namespace
 
 namespace stella_vslam {
@@ -110,6 +380,18 @@ keyframe::keyframe(unsigned int id, const frame& frm)
       landmarks_(frm.get_landmarks()) {
     // set pose parameters (pose_wc_, trans_wc_) using frm.pose_cw_
     set_pose_cw(frm.get_pose_cw());
+
+#ifdef STELLA_VSLAM_MANUAL_KEYPOINT_MASK
+    {
+        unused_keypt_indices_ = select_unused_keypoint_indices(img_, frm_obs_.undist_keypts_, id_, src_frm_id_);
+        for (const auto idx : unused_keypt_indices_) {
+            if (idx < landmarks_.size()) {
+                landmarks_.at(idx) = nullptr;
+            }
+        }
+        spdlog::info("manual keypoint mask: keyfrm_id={} src_frm_id={} unused={}", id_, src_frm_id_, unused_keypt_indices_.size());
+    }
+#endif
 
     spdlog::info("keyfrm_id: {}  src_frm_id: {}  video_time: {}", id_, src_frm_id_, src_frm_id_ / frm.camera_->fps_);
 }
@@ -127,6 +409,18 @@ keyframe::keyframe(const unsigned int id, const unsigned int src_frm_id, const d
       landmarks_(std::vector<std::shared_ptr<landmark>>(frm_obs_.undist_keypts_.size(), nullptr)) {
     // set pose parameters (pose_wc_, trans_wc_) using pose_cw_
     set_pose_cw(pose_cw);
+
+#ifdef STELLA_VSLAM_MANUAL_KEYPOINT_MASK
+    {
+        unused_keypt_indices_ = select_unused_keypoint_indices(img_, frm_obs_.undist_keypts_, id_, src_frm_id_);
+        for (const auto idx : unused_keypt_indices_) {
+            if (idx < landmarks_.size()) {
+                landmarks_.at(idx) = nullptr;
+            }
+        }
+        spdlog::info("manual keypoint mask: keyfrm_id={} src_frm_id={} unused={}", id_, src_frm_id_, unused_keypt_indices_.size());
+    }
+#endif
 
     spdlog::info("keyfrm_id: {}  src_frm_id: {}  video_time: {}", id_, src_frm_id_, src_frm_id_ / camera->fps_);
 
@@ -282,6 +576,10 @@ nlohmann::json keyframe::to_json() const {
         loop_edge_ids.push_back(loop_edge->id_);
     }
 
+    // extract manually masked (unused) keypoint indices
+    std::vector<unsigned int> unused_keypt_indices(unused_keypt_indices_.begin(), unused_keypt_indices_.end());
+    std::sort(unused_keypt_indices.begin(), unused_keypt_indices.end());
+
     // TODO: msgpack format does not yet support markers save/load
 
     return {{"ts", timestamp_},
@@ -298,6 +596,7 @@ nlohmann::json keyframe::to_json() const {
             {"depths", frm_obs_.depths_},
             {"descs", convert_descriptors_to_json(frm_obs_.descriptors_)},
             {"lm_ids", landmark_ids},
+            {"unused_keypt_indices", unused_keypt_indices},
             // graph information
             {"span_parent", spanning_parent ? spanning_parent->id_ : -1},
             {"span_children", spanning_child_ids},
@@ -416,6 +715,9 @@ void keyframe::compute_bow(bow_vocabulary* bow_vocab) {
 
 void keyframe::add_landmark(std::shared_ptr<landmark> lm, const unsigned int idx) {
     std::lock_guard<std::mutex> lock(mtx_observations_);
+    if (unused_keypt_indices_.count(idx) > 0) {
+        return;
+    }
     landmarks_.at(idx) = lm;
 }
 
@@ -515,7 +817,17 @@ std::shared_ptr<landmark>& keyframe::get_landmark(const unsigned int idx) {
 
 std::vector<unsigned int> keyframe::get_keypoints_in_cell(const float ref_x, const float ref_y, const float margin,
                                                           const int min_level, const int max_level) const {
-    return data::get_keypoints_in_cell(camera_, frm_obs_, ref_x, ref_y, margin, min_level, max_level);
+    auto indices = data::get_keypoints_in_cell(camera_, frm_obs_, ref_x, ref_y, margin, min_level, max_level);
+    if (unused_keypt_indices_.empty()) {
+        return indices;
+    }
+
+    indices.erase(std::remove_if(indices.begin(), indices.end(),
+                                 [this](const unsigned int idx) {
+                                     return unused_keypt_indices_.count(idx) > 0;
+                                 }),
+                  indices.end());
+    return indices;
 }
 
 Vec3_t keyframe::triangulate_stereo(const unsigned int idx) const {

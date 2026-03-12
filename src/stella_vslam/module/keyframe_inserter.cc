@@ -133,6 +133,18 @@ std::shared_ptr<data::keyframe> keyframe_inserter::create_new_keyframe(
     std::lock_guard<std::mutex> lock(data::map_database::mtx_database_);
 
     auto keyfrm = data::keyframe::make_keyframe(map_db->next_keyframe_id_++, curr_frm);
+
+    // Keep frame-side associations consistent with manual keypoint masking.
+    // `curr_frm` can later become `last_frm` in tracking, so clear masked landmarks here as well.
+    for (const auto idx : keyfrm->unused_keypt_indices_) {
+        if (idx < curr_frm.frm_obs_.undist_keypts_.size()) {
+            const auto lm = curr_frm.get_landmark(idx);
+            if (lm) {
+                curr_frm.erase_landmark_with_index(idx);
+            }
+        }
+    }
+
     keyfrm->update_landmarks();
 
     for (const auto& id_mkr2d : keyfrm->markers_2d_) {
@@ -161,6 +173,9 @@ std::shared_ptr<data::keyframe> keyframe_inserter::create_new_keyframe(
     std::vector<std::pair<float, unsigned int>> depth_idx_pairs;
     depth_idx_pairs.reserve(curr_frm.frm_obs_.undist_keypts_.size());
     for (unsigned int idx = 0; idx < curr_frm.frm_obs_.undist_keypts_.size(); ++idx) {
+        if (keyfrm->unused_keypt_indices_.count(idx) > 0) {
+            continue;
+        }
         assert(!curr_frm.frm_obs_.depths_.empty());
         const auto depth = curr_frm.frm_obs_.depths_.at(idx);
         // Add if the depth is valid

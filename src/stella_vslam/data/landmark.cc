@@ -374,6 +374,9 @@ bool landmark::will_be_erased() {
 }
 
 void landmark::connect_to_keyframe(const std::shared_ptr<keyframe>& keyfrm, unsigned int idx) {
+    if (keyfrm->unused_keypt_indices_.count(idx) > 0) {
+        return;
+    }
     assert(!observations_.count(keyfrm));
     keyfrm->add_landmark(shared_from_this(), idx);
     add_observation(keyfrm, idx);

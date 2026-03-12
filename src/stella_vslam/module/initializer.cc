@@ -228,12 +228,18 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
             continue;
         }
 
+        const auto curr_idx_u = static_cast<unsigned int>(curr_idx);
+        if (init_keyfrm->unused_keypt_indices_.count(init_idx) > 0
+            || curr_keyfrm->unused_keypt_indices_.count(curr_idx_u) > 0) {
+            continue;
+        }
+
         // construct a landmark
         auto lm = std::make_shared<data::landmark>(map_db_->next_landmark_id_++, init_triangulated_pts.at(init_idx), curr_keyfrm);
 
         // set the assocications to the new keyframes
         lm->connect_to_keyframe(init_keyfrm, init_idx);
-        lm->connect_to_keyframe(curr_keyfrm, curr_idx);
+        lm->connect_to_keyframe(curr_keyfrm, curr_idx_u);
 
         // update the descriptor
         lm->compute_descriptor();
@@ -241,7 +247,7 @@ bool initializer::create_map_for_monocular(data::bow_vocabulary* bow_vocab, data
         lm->update_mean_normal_and_obs_scale_variance();
 
         // set the 2D-3D assocications to the current frame
-        curr_frm.add_landmark(lm, curr_idx);
+        curr_frm.add_landmark(lm, curr_idx_u);
 
         // add the landmark to the map DB
         map_db_->add_landmark(lm);
@@ -361,6 +367,10 @@ bool initializer::create_map_for_stereo(data::bow_vocabulary* bow_vocab, data::f
     map_db_->update_frame_statistics(curr_frm, false);
 
     for (unsigned int idx = 0; idx < curr_frm.frm_obs_.undist_keypts_.size(); ++idx) {
+        if (curr_keyfrm->unused_keypt_indices_.count(idx) > 0) {
+            continue;
+        }
+
         // add a new landmark if tht corresponding depth is valid
         const auto z = curr_frm.frm_obs_.depths_.at(idx);
         if (z <= 0) {

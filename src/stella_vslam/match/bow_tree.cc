@@ -54,6 +54,11 @@ unsigned int bow_tree::match_for_triangulation(const std::shared_ptr<data::keyfr
                     continue;
                 }
 
+                // Ignore if the keypoint is manually marked as unused
+                if (keyfrm_1->unused_keypt_indices_.count(idx_1) > 0) {
+                    continue;
+                }
+
                 // Check if it's a stereo keypoint or not
                 const bool is_stereo_keypt_1 = !keyfrm_1->frm_obs_.stereo_x_right_.empty() && 0 <= keyfrm_1->frm_obs_.stereo_x_right_.at(idx_1);
 
@@ -77,6 +82,11 @@ unsigned int bow_tree::match_for_triangulation(const std::shared_ptr<data::keyfr
 
                     // Ignore if matches are already aquired
                     if (is_already_matched_in_keyfrm_2.at(idx_2)) {
+                        continue;
+                    }
+
+                    // Ignore if the keypoint is manually marked as unused
+                    if (keyfrm_2->unused_keypt_indices_.count(idx_2) > 0) {
                         continue;
                     }
 
