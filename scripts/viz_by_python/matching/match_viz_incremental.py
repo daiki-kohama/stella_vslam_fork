@@ -169,7 +169,13 @@ def main():
                 octaves_str = ", ".join([f"({m['frm1_octave']},{m['frm2_octave']})" for m in batch_matches[:3]])
                 if len(batch_matches) > 3:
                     octaves_str += "..."
-                window_title = f"Matches [{pair_idx + 1}/{len(matches_list)}] batch {batch_idx + 1}/{num_batches} ({start_idx + 1}-{end_idx}/{num_matches}) octaves: {octaves_str}"
+                window_title = (
+                    f"Matches [{pair_idx + 1}/{len(matches_list)}] "
+                    f"frames {frm1_id}->{frm2_id} "
+                    f"batch {batch_idx + 1}/{num_batches} "
+                    f"({start_idx + 1}-{end_idx}/{num_matches}) "
+                    f"octaves: {octaves_str}"
+                )
                 print(f"  {window_title}")
                 cv2.imshow("Matches", img_with_matches)
                 cv2.setWindowTitle("Matches", window_title)
