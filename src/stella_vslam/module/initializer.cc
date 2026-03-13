@@ -11,10 +11,79 @@
 #include "stella_vslam/module/marker_initializer.h"
 #include "stella_vslam/optimize/global_bundle_adjuster.h"
 
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
+
+#include <cerrno>
 #include <spdlog/spdlog.h>
+#include <fstream>
 
 namespace stella_vslam {
 namespace module {
+
+namespace {
+
+bool ensure_matches_directory_exists() {
+#ifdef _WIN32
+    if (_mkdir("matches") == 0 || errno == EEXIST) {
+        return true;
+    }
+#else
+    if (mkdir("matches", 0755) == 0 || errno == EEXIST) {
+        return true;
+    }
+#endif
+    spdlog::warn("failed to create matches directory: {}", errno);
+    return false;
+}
+
+void write_initializer_matches_to_csv(const std::string& filename, unsigned int frm1_id, unsigned int frm2_id,
+                                      const data::frame& frm1, const data::frame& frm2,
+                                      const std::vector<int>& matches) {
+    if (!ensure_matches_directory_exists()) {
+        return;
+    }
+
+    std::ofstream file(filename, std::ios::app);
+    if (!file.is_open()) {
+        spdlog::warn("failed to open file: {}", filename);
+        return;
+    }
+
+    file.seekp(0, std::ios::end);
+    const bool is_empty = file.tellp() == 0;
+    file.seekp(0, std::ios::end);
+
+    if (is_empty) {
+        file << "frm1_id,frm2_id,frm1_u,frm1_v,frm1_octave,frm1_response,frm2_u,frm2_v,frm2_octave,frm2_response\n";
+    }
+
+    const auto frm1_size = frm1.frm_obs_.undist_keypts_.size();
+    const auto frm2_size = frm2.frm_obs_.undist_keypts_.size();
+    const auto num_pairs = std::min(frm1_size, matches.size());
+
+    for (size_t frm1_idx = 0; frm1_idx < num_pairs; ++frm1_idx) {
+        const auto frm2_idx = matches.at(frm1_idx);
+        if (frm2_idx < 0) {
+            continue;
+        }
+        if (static_cast<unsigned int>(frm2_idx) >= frm2_size) {
+            continue;
+        }
+
+        const auto& frm1_kp = frm1.frm_obs_.undist_keypts_.at(frm1_idx);
+        const auto& frm2_kp = frm2.frm_obs_.undist_keypts_.at(frm2_idx);
+        file << frm1_id << "," << frm2_id << ","
+             << frm1_kp.pt.x << "," << frm1_kp.pt.y << "," << frm1_kp.octave << "," << frm1_kp.response << ","
+             << frm2_kp.pt.x << "," << frm2_kp.pt.y << "," << frm2_kp.octave << "," << frm2_kp.response << "\n";
+    }
+}
+
+} // namespace
 
 initializer::initializer(data::map_database* map_db,
                          const YAML::Node& yaml_node)
@@ -74,6 +143,8 @@ bool initializer::initialize(const camera::setup_type_t setup_type,
                 // failed
                 return false;
             }
+
+            write_initializer_matches_to_csv("matches/initializer.csv", init_frm_.id_, curr_frm.id_, init_frm_, curr_frm, init_matches_);
 
             // create new map if succeeded
             create_map_for_monocular(bow_vocab, curr_frm);
