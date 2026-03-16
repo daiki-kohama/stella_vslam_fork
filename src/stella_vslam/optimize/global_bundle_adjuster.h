@@ -5,6 +5,9 @@ namespace stella_vslam {
 
 namespace data {
 class map_database;
+class keyframe;
+class landmark;
+class marker;
 } // namespace data
 
 namespace optimize {
@@ -51,7 +54,19 @@ public:
                   eigen_alloc_unord_map<unsigned int, Vec3_t>& lm_to_pos_w_after_global_BA,
                   eigen_alloc_unord_map<unsigned int, Mat44_t>& keyfrm_to_pose_cw_after_global_BA,
                   eigen_alloc_unord_map<unsigned int, std::array<Vec3_t, 4>>& marker_to_pos_w_after_global_BA,
+                  std::vector<std::pair<std::shared_ptr<data::keyframe>, std::shared_ptr<data::landmark>>>* outlier_observations = nullptr,
                   bool* const force_stop_flag = nullptr) const;
+
+    /**
+     * Perform global BA on all map keyframes and apply the optimized results.
+     * @param map_db
+     * @param curr_keyfrm
+     * @param force_stop_flag
+     * @return false if aborted
+     */
+    bool optimize_and_update(data::map_database* map_db,
+                             const std::shared_ptr<data::keyframe>& curr_keyfrm,
+                             bool* const force_stop_flag = nullptr) const;
 
 private:
     //! number of iterations of optimization

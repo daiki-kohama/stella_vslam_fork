@@ -58,6 +58,7 @@ void loop_bundle_adjuster::optimize(const std::shared_ptr<data::keyframe>& curr_
                                  lm_to_pos_w_after_global_BA,
                                  keyfrm_to_pose_cw_after_global_BA,
                                  marker_to_pos_w_after_global_BA,
+                                 nullptr,
                                  &abort_loop_BA_);
 
     {

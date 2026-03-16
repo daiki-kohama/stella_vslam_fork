@@ -20,6 +20,9 @@
 #include <g2o/solvers/csparse/linear_solver_csparse.h>
 #include <g2o/core/optimization_algorithm_levenberg.h>
 
+#include <list>
+#include <spdlog/spdlog.h>
+
 namespace stella_vslam {
 namespace optimize {
 
@@ -36,6 +39,7 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
                    bool use_huber_kernel,
                    bool fix_markers,
                    bool verbose,
+                   std::vector<std::pair<std::shared_ptr<data::keyframe>, std::shared_ptr<data::landmark>>>* outlier_observations,
                    bool* const force_stop_flag) {
     // 2. Construct an optimizer
 
@@ -189,6 +193,27 @@ void optimize_impl(g2o::SparseOptimizer& optimizer,
     if (force_stop_flag && *force_stop_flag) {
         return;
     }
+
+    if (outlier_observations) {
+        outlier_observations->clear();
+        outlier_observations->reserve(reproj_edge_wraps.size());
+
+        for (auto& reproj_edge_wrap : reproj_edge_wraps) {
+            auto edge = reproj_edge_wrap.edge_;
+
+            const auto& lm = reproj_edge_wrap.lm_;
+            if (!lm || lm->will_be_erased()) {
+                continue;
+            }
+
+            const bool is_outlier = reproj_edge_wrap.is_monocular_
+                                        ? (chi_sq_2D < edge->chi2() || !reproj_edge_wrap.depth_is_positive())
+                                        : (chi_sq_3D < edge->chi2() || !reproj_edge_wrap.depth_is_positive());
+            if (is_outlier) {
+                outlier_observations->emplace_back(reproj_edge_wrap.shot_, reproj_edge_wrap.lm_);
+            }
+        }
+    }
 }
 
 global_bundle_adjuster::global_bundle_adjuster(
@@ -222,7 +247,7 @@ void global_bundle_adjuster::optimize_for_initialization(const std::vector<std::
     optimizer.addPostIterationAction(terminateAction);
 
     optimize_impl(optimizer, keyfrms, lms, markers, is_optimized_lm, keyfrm_vtx_container, lm_vtx_container, marker_vtx_container,
-                  mkr_has_vtx, num_iter_, use_huber_kernel_, fix_markers, verbose_, force_stop_flag);
+                  mkr_has_vtx, num_iter_, use_huber_kernel_, fix_markers, verbose_, nullptr, force_stop_flag);
 
     if (force_stop_flag && *force_stop_flag) {
         return;
@@ -283,6 +308,7 @@ bool global_bundle_adjuster::optimize(const std::vector<std::shared_ptr<data::ke
                                       eigen_alloc_unord_map<unsigned int, Vec3_t>& lm_to_pos_w_after_global_BA,
                                       eigen_alloc_unord_map<unsigned int, Mat44_t>& keyfrm_to_pose_cw_after_global_BA,
                                       eigen_alloc_unord_map<unsigned int, std::array<Vec3_t, 4>>& marker_to_pos_w_after_global_BA,
+                                      std::vector<std::pair<std::shared_ptr<data::keyframe>, std::shared_ptr<data::landmark>>>* outlier_observations,
                                       bool* const force_stop_flag) const {
     std::unordered_set<unsigned int> already_found_landmark_ids;
     std::vector<std::shared_ptr<data::landmark>> lms;
@@ -336,7 +362,7 @@ bool global_bundle_adjuster::optimize(const std::vector<std::shared_ptr<data::ke
     optimizer.addPostIterationAction(terminateAction);
 
     optimize_impl(optimizer, keyfrms, lms, markers, is_optimized_lm, keyfrm_vtx_container, lm_vtx_container, marker_vtx_container,
-                  mkr_has_vtx, num_iter_, use_huber_kernel_, false, verbose_, force_stop_flag);
+                  mkr_has_vtx, num_iter_, use_huber_kernel_, false, verbose_, outlier_observations, force_stop_flag);
 
     if (force_stop_flag && *force_stop_flag && !terminateAction->stopped_by_terminate_action_) {
         return false;
@@ -406,6 +432,198 @@ bool global_bundle_adjuster::optimize(const std::vector<std::shared_ptr<data::ke
 
         optimized_marker_ids.insert(mkr->id_);
         marker_to_pos_w_after_global_BA[mkr->id_] = new_pos_corners;
+    }
+
+    return true;
+}
+
+bool global_bundle_adjuster::optimize_and_update(data::map_database* map_db,
+                                                 const std::shared_ptr<data::keyframe>& curr_keyfrm,
+                                                 bool* const force_stop_flag) const {
+    if (!map_db || !curr_keyfrm) {
+        return false;
+    }
+
+    const auto keyfrms = curr_keyfrm->graph_node_->get_keyframes_from_root();
+    if (keyfrms.empty()) {
+        return true;
+    }
+
+    spdlog::info("start global bundle adjustment on {} keyframes", keyfrms.size());
+
+    std::unordered_set<unsigned int> optimized_keyfrm_ids;
+    std::unordered_set<unsigned int> optimized_landmark_ids;
+    std::unordered_set<unsigned int> optimized_marker_ids;
+    std::vector<std::pair<std::shared_ptr<data::keyframe>, std::shared_ptr<data::landmark>>> outlier_observations;
+    eigen_alloc_unord_map<unsigned int, Vec3_t> lm_to_pos_w_after_global_BA;
+    eigen_alloc_unord_map<unsigned int, Mat44_t> keyfrm_to_pose_cw_after_global_BA;
+    eigen_alloc_unord_map<unsigned int, std::array<Vec3_t, 4>> marker_to_pos_w_after_global_BA;
+
+    const bool ok = optimize(keyfrms,
+                             optimized_keyfrm_ids,
+                             optimized_landmark_ids,
+                             optimized_marker_ids,
+                             lm_to_pos_w_after_global_BA,
+                             keyfrm_to_pose_cw_after_global_BA,
+                             marker_to_pos_w_after_global_BA,
+                             &outlier_observations,
+                             force_stop_flag);
+    if (!ok) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(data::map_database::mtx_database_);
+
+        for (const auto& outlier_obs : outlier_observations) {
+            const auto& keyfrm = outlier_obs.first;
+            const auto& lm = outlier_obs.second;
+            if (!keyfrm || !lm) {
+                continue;
+            }
+            if (keyfrm->will_be_erased() || lm->will_be_erased()) {
+                continue;
+            }
+            if (!lm->is_observed_in_keyframe(keyfrm)) {
+                continue;
+            }
+
+            keyfrm->erase_landmark(lm);
+            lm->erase_observation(map_db, keyfrm);
+            if (!lm->will_be_erased()) {
+                lm->compute_descriptor();
+                lm->update_mean_normal_and_obs_scale_variance();
+            }
+        }
+
+        // Update keyframe poses with propagation along the spanning tree from the root.
+        eigen_alloc_unord_map<unsigned int, Mat44_t> keyfrm_to_cam_pose_cw_before_BA;
+        std::list<std::shared_ptr<data::keyframe>> keyfrms_to_check;
+        keyfrms_to_check.push_back(curr_keyfrm->graph_node_->get_spanning_root());
+        while (!keyfrms_to_check.empty()) {
+            auto parent = keyfrms_to_check.front();
+            keyfrms_to_check.pop_front();
+
+            const Mat44_t cam_pose_wp = parent->get_pose_wc();
+
+            const auto children = parent->graph_node_->get_spanning_children();
+            for (auto child : children) {
+                if (!child || child->will_be_erased()) {
+                    continue;
+                }
+                if (!optimized_keyfrm_ids.count(child->id_)) {
+                    // Propagate correction from the spanning parent for non-optimized children.
+                    const Mat44_t cam_pose_cp = child->get_pose_cw() * cam_pose_wp;
+                    if (keyfrm_to_pose_cw_after_global_BA.count(parent->id_)) {
+                        keyfrm_to_pose_cw_after_global_BA[child->id_] = cam_pose_cp * keyfrm_to_pose_cw_after_global_BA.at(parent->id_);
+                        optimized_keyfrm_ids.insert(child->id_);
+                    }
+                }
+
+                keyfrms_to_check.push_back(child);
+            }
+
+            if (!keyfrm_to_pose_cw_after_global_BA.count(parent->id_)) {
+                continue;
+            }
+
+            keyfrm_to_cam_pose_cw_before_BA[parent->id_] = parent->get_pose_cw();
+            parent->set_pose_cw(keyfrm_to_pose_cw_after_global_BA.at(parent->id_));
+        }
+
+        // Collect landmarks in the current spanning tree.
+        std::unordered_set<unsigned int> already_found_landmark_ids;
+        std::vector<std::shared_ptr<data::landmark>> lms;
+        for (const auto& keyfrm : keyfrms) {
+            if (!keyfrm || keyfrm->will_be_erased()) {
+                continue;
+            }
+            for (const auto& lm : keyfrm->get_landmarks()) {
+                if (!lm || lm->will_be_erased()) {
+                    continue;
+                }
+                if (already_found_landmark_ids.count(lm->id_)) {
+                    continue;
+                }
+                already_found_landmark_ids.insert(lm->id_);
+                lms.push_back(lm);
+            }
+        }
+
+        for (const auto& lm : lms) {
+            if (!lm) {
+                continue;
+            }
+            if (lm->will_be_erased()) {
+                continue;
+            }
+
+            if (optimized_landmark_ids.count(lm->id_) && lm_to_pos_w_after_global_BA.count(lm->id_)) {
+                // Direct update for optimized landmarks.
+                lm->set_pos_in_world(lm_to_pos_w_after_global_BA.at(lm->id_));
+            }
+            else {
+                // Propagate correction via the reference keyframe.
+                auto ref_keyfrm = lm->get_ref_keyframe();
+                if (!ref_keyfrm) {
+                    continue;
+                }
+                if (!optimized_keyfrm_ids.count(ref_keyfrm->id_)) {
+                    continue;
+                }
+                if (!keyfrm_to_cam_pose_cw_before_BA.count(ref_keyfrm->id_)) {
+                    continue;
+                }
+
+                const Mat44_t pose_cw_before_BA = keyfrm_to_cam_pose_cw_before_BA.at(ref_keyfrm->id_);
+                const Mat33_t rot_cw_before_BA = pose_cw_before_BA.block<3, 3>(0, 0);
+                const Vec3_t trans_cw_before_BA = pose_cw_before_BA.block<3, 1>(0, 3);
+                const Vec3_t pos_c = rot_cw_before_BA * lm->get_pos_in_world() + trans_cw_before_BA;
+
+                const Mat44_t cam_pose_wc = ref_keyfrm->get_pose_wc();
+                const Mat33_t rot_wc = cam_pose_wc.block<3, 3>(0, 0);
+                const Vec3_t trans_wc = cam_pose_wc.block<3, 1>(0, 3);
+                lm->set_pos_in_world(rot_wc * pos_c + trans_wc);
+            }
+
+            lm->update_mean_normal_and_obs_scale_variance();
+        }
+
+        // Collect markers in the current spanning tree.
+        std::unordered_set<unsigned int> already_found_marker_ids;
+        std::vector<std::shared_ptr<data::marker>> markers;
+        for (const auto& keyfrm : keyfrms) {
+            if (!keyfrm || keyfrm->will_be_erased()) {
+                continue;
+            }
+            for (const auto& mkr : keyfrm->get_markers()) {
+                if (!mkr) {
+                    continue;
+                }
+                if (already_found_marker_ids.count(mkr->id_)) {
+                    continue;
+                }
+                already_found_marker_ids.insert(mkr->id_);
+                markers.push_back(mkr);
+            }
+        }
+
+        for (const auto& mkr : markers) {
+            if (!mkr) {
+                continue;
+            }
+            if (!optimized_marker_ids.count(mkr->id_)) {
+                continue;
+            }
+            if (!marker_to_pos_w_after_global_BA.count(mkr->id_)) {
+                continue;
+            }
+
+            const auto& new_corners = marker_to_pos_w_after_global_BA.at(mkr->id_);
+            for (size_t corner_idx = 0; corner_idx < 4; ++corner_idx) {
+                mkr->corners_pos_w_[corner_idx] = new_corners[corner_idx];
+            }
+        }
     }
 
     return true;

@@ -8,6 +8,7 @@
 #include "stella_vslam/match/fuse.h"
 #include "stella_vslam/match/robust.h"
 #include "stella_vslam/module/two_view_triangulator.h"
+#include "stella_vslam/optimize/global_bundle_adjuster.h"
 #include "stella_vslam/optimize/local_bundle_adjuster_factory.h"
 #include "stella_vslam/solve/essential_solver.h"
 
@@ -194,17 +195,19 @@ void mapping_module::mapping_with_new_keyframe() {
         return;
     }
 
-    SPDLOG_TRACE("mapping_module: local bundle adjustment (current keyframe is {})", cur_keyfrm_->id_);
+    SPDLOG_TRACE("mapping_module: global bundle adjustment (current keyframe is {})", cur_keyfrm_->id_);
 
-    // local bundle adjustment
+    // global bundle adjustment
     abort_local_BA_ = false;
-    // If the processing speed is insufficient, skip localBA.
+    // If the processing speed is insufficient, skip globalBA.
     if (2 < map_db_->get_num_keyframes()) {
         if (is_skipping_localBA()) {
-            spdlog::debug("Skipped localBA due to insufficient performance");
+            spdlog::debug("Skipped globalBA due to insufficient performance");
         }
         else {
-            local_bundle_adjuster_->optimize(map_db_, cur_keyfrm_, &abort_local_BA_);
+            // local_bundle_adjuster_->optimize(map_db_, cur_keyfrm_, &abort_local_BA_);
+            const optimize::global_bundle_adjuster global_bundle_adjuster;
+            global_bundle_adjuster.optimize_and_update(map_db_, cur_keyfrm_, &abort_local_BA_);
         }
     }
 
