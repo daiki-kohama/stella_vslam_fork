@@ -8,10 +8,69 @@
 #include "stella_vslam/module/frame_tracker.h"
 #include "stella_vslam/optimize/pose_optimizer_g2o.h"
 
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <cerrno>
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
+
 #include <spdlog/spdlog.h>
+#include <fstream>
 
 namespace stella_vslam {
 namespace module {
+
+void write_matches_to_csv(const std::string& filename, unsigned int frm1_id, unsigned int frm2_id,
+                          const data::frame& frm1, const data::frame& frm2,
+                          const std::shared_ptr<data::keyframe>& keyfrm = nullptr) {
+    // Open file in append mode
+    std::ofstream file(filename, std::ios::app);
+    if (!file.is_open()) {
+        spdlog::warn("failed to open file: {}", filename);
+        return;
+    }
+
+    // Check if file is empty to write header
+    file.seekp(0, std::ios::end);
+    bool is_empty = file.tellp() == 0;
+    file.seekp(0, std::ios::end);
+
+    if (is_empty) {
+        file << "frm1_id,frm2_id,frm1_u,frm1_v,frm1_octave,frm1_response,frm2_u,frm2_v,frm2_octave,frm2_response\n";
+    }
+
+    // Write matching points
+    for (unsigned int idx = 0; idx < frm1.frm_obs_.undist_keypts_.size(); ++idx) {
+        const auto& lm = frm1.get_landmark(idx);
+        if (lm == nullptr) {
+            continue;
+        }
+
+        const auto& frm1_kp = frm1.frm_obs_.undist_keypts_.at(idx);
+        int frm2_idx = -1;
+
+        if (keyfrm != nullptr) {
+            // For bow_match or robust_match based tracking
+            frm2_idx = lm->get_index_in_keyframe(keyfrm);
+            if (frm2_idx < 0 || static_cast<unsigned int>(frm2_idx) >= keyfrm->frm_obs_.undist_keypts_.size()) {
+                continue;
+            }
+        } else {
+            // For motion based tracking
+            frm2_idx = frm2.get_landmark_idx(lm);
+            if (frm2_idx < 0 || static_cast<unsigned int>(frm2_idx) >= frm2.frm_obs_.undist_keypts_.size()) {
+                continue;
+            }
+        }
+
+        const auto& frm2_kp = (keyfrm != nullptr) ? keyfrm->frm_obs_.undist_keypts_.at(frm2_idx) : frm2.frm_obs_.undist_keypts_.at(frm2_idx);
+        file << frm1_id << "," << frm2_id << "," << frm1_kp.pt.x << "," << frm1_kp.pt.y << "," << frm1_kp.octave << "," << frm1_kp.response << "," << frm2_kp.pt.x << "," << frm2_kp.pt.y << "," << frm2_kp.octave << "," << frm2_kp.response << "\n";
+    }
+
+    file.close();
+}
 
 frame_tracker::frame_tracker(camera::base* camera, const std::shared_ptr<optimize::pose_optimizer>& pose_optimizer,
                              const unsigned int num_matches_thr, bool use_fixed_seed, float margin)
@@ -36,7 +95,7 @@ bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame&
     }
 
     if (num_matches < num_matches_thr_) {
-        spdlog::debug("motion based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
+        spdlog::debug("motion based tracking failed before optimization: {} matches < {}", num_matches, num_matches_thr_);
         return false;
     }
 
@@ -50,10 +109,23 @@ bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame&
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
     if (num_valid_matches < num_matches_thr_) {
-        spdlog::debug("motion based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
+        spdlog::debug("motion based tracking failed after optimization: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
         return false;
     }
     else {
+        constexpr auto matches_dir = "matches";
+#ifdef _WIN32
+        _mkdir(matches_dir);
+        _mkdir(motion_based_tracking_dir);
+#else
+        if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
+            spdlog::warn("failed to create directory {}", matches_dir);
+        }
+#endif
+        // Write matches to CSV
+        write_matches_to_csv("matches/motion_based_tracking.csv", curr_frm.id_, last_frm.id_, curr_frm, last_frm);
+
+        spdlog::debug("motion based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }
@@ -67,7 +139,7 @@ bool frame_tracker::bow_match_based_track(data::frame& curr_frm, const data::fra
     auto num_matches = bow_matcher.match_frame_and_keyframe(ref_keyfrm, curr_frm, matched_lms_in_curr);
 
     if (num_matches < num_matches_thr_) {
-        spdlog::debug("bow match based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
+        spdlog::debug("bow match based tracking failed before optimization: {} matches < {}", num_matches, num_matches_thr_);
         return false;
     }
 
@@ -86,10 +158,23 @@ bool frame_tracker::bow_match_based_track(data::frame& curr_frm, const data::fra
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
     if (num_valid_matches < num_matches_thr_) {
-        spdlog::debug("bow match based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
+        spdlog::debug("bow match based tracking failed after optimization: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
         return false;
     }
     else {
+        constexpr auto matches_dir = "matches";
+#ifdef _WIN32
+        _mkdir(matches_dir);
+        _mkdir(bow_match_based_tracking_dir);
+#else
+        if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
+            spdlog::warn("failed to create directory {}", matches_dir);
+        }
+#endif
+        // Write matches to CSV
+        write_matches_to_csv("matches/bow_match_based_tracking.csv", curr_frm.id_, ref_keyfrm->src_frm_id_, curr_frm, last_frm, ref_keyfrm);
+
+        spdlog::debug("bow match based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }
@@ -103,7 +188,7 @@ bool frame_tracker::robust_match_based_track(data::frame& curr_frm, const data::
     auto num_matches = robust_matcher.match_frame_and_keyframe(curr_frm, ref_keyfrm, matched_lms_in_curr, use_fixed_seed_);
 
     if (num_matches < num_matches_thr_) {
-        spdlog::debug("robust match based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
+        spdlog::debug("robust match based tracking failed before optimization: {} matches < {}", num_matches, num_matches_thr_);
         return false;
     }
 
@@ -122,10 +207,23 @@ bool frame_tracker::robust_match_based_track(data::frame& curr_frm, const data::
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
     if (num_valid_matches < num_matches_thr_) {
-        spdlog::debug("robust match based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
+        spdlog::debug("robust match based tracking failed after optimization: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
         return false;
     }
     else {
+        constexpr auto matches_dir = "matches";
+#ifdef _WIN32
+        _mkdir(matches_dir);
+        _mkdir(robust_match_based_tracking_dir);
+#else
+        if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
+            spdlog::warn("failed to create directory {}", matches_dir);
+        }
+#endif
+        // Write matches to CSV
+        write_matches_to_csv("matches/robust_match_based_tracking.csv", curr_frm.id_, ref_keyfrm->src_frm_id_, curr_frm, last_frm, ref_keyfrm);
+
+        spdlog::debug("robust match based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }

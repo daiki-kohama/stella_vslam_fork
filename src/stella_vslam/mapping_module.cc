@@ -11,6 +11,7 @@
 #include "stella_vslam/optimize/local_bundle_adjuster_factory.h"
 #include "stella_vslam/solve/essential_solver.h"
 
+#include <fstream>
 #include <thread>
 
 #include <spdlog/spdlog.h>
@@ -234,6 +235,55 @@ void mapping_module::mapping_with_new_keyframe() {
                 }
             }
         }
+    }
+
+    // Write cur_keyfrm_ landmarks to CSV
+    constexpr auto matches_dir = "matches";
+#ifdef _WIN32
+    _mkdir(matches_dir);
+#else
+    if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
+        spdlog::warn("failed to create directory {}", matches_dir);
+    }
+#endif
+
+    std::ofstream csv_file("matches/mapping_with_new_keyframe.csv", std::ios::app);
+    if (csv_file.is_open()) {
+        // Write header if file is empty
+        csv_file.seekp(0, std::ios::end);
+        bool is_empty = csv_file.tellp() == 0;
+        csv_file.seekp(0, std::ios::end);
+
+        if (is_empty) {
+            csv_file << "keyfrm_id,frm_id,lm_id,u,v,num_observations\n";
+        }
+
+        // Write landmarks connected to cur_keyfrm_
+        const auto cur_landmarks = cur_keyfrm_->get_landmarks();
+        for (unsigned int idx = 0; idx < cur_landmarks.size(); ++idx) {
+            const auto& lm = cur_landmarks.at(idx);
+            if (!lm) {
+                continue;
+            }
+            if (lm->will_be_erased()) {
+                continue;
+            }
+
+            const auto& kp = cur_keyfrm_->frm_obs_.undist_keypts_.at(idx);
+            unsigned int num_obs = lm->num_observations();
+
+            csv_file << cur_keyfrm_->id_ << ","
+                     << cur_keyfrm_->src_frm_id_ << ","
+                     << lm->id_ << ","
+                     << kp.pt.x << ","
+                     << kp.pt.y << ","
+                     << num_obs << "\n";
+        }
+
+        csv_file.close();
+    }
+    else {
+        spdlog::warn("failed to open file: matches/mapping_with_new_keyframe.csv");
     }
 
     local_map_cleaner_->remove_redundant_keyframes(cur_keyfrm_);
