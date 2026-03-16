@@ -110,7 +110,9 @@ private:
     void store_new_keyframe();
 
     //! Create new landmarks using neighbor keyframes
-    void create_new_landmarks(std::atomic<bool>& abort_create_new_landmarks);
+    void create_new_landmarks(std::atomic<bool>& abort_create_new_landmarks,
+                              const std::vector<bool>* cur_keyfrm_mask = nullptr,
+                              bool is_second_pass = false);
 
     //! Triangulate landmarks between the keyframes 1 and 2
     void triangulate_with_two_keyframes(const std::shared_ptr<data::keyframe>& keyfrm_1, const std::shared_ptr<data::keyframe>& keyfrm_2,

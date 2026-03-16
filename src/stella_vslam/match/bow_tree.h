@@ -26,7 +26,8 @@ public:
                                          const std::shared_ptr<data::keyframe>& keyfrm_2,
                                          const Mat33_t& E_12,
                                          std::vector<std::pair<unsigned int, unsigned int>>& matched_idx_pairs,
-                                         const float residual_rad_thr) const;
+                                         const float residual_rad_thr,
+                                         const bool is_second_pass = false) const;
 
     //! Find the correspondence between the feature points observed in the frame and the feature points observed in the keyframe,
     //! and obtain the correspondence between the feature points in the frame and the 3D points.

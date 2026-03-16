@@ -180,6 +180,55 @@ void mapping_module::mapping_with_new_keyframe() {
         }
     }
 
+    if (cur_keyfrm_->camera_->model_type_ == camera::model_type_t::Equirectangular) {
+        const auto cur_landmarks = cur_keyfrm_->get_landmarks();
+        Vec3_t sum_bearing = Vec3_t::Zero();
+        unsigned int num_bearings = 0;
+
+        for (unsigned int idx = 0; idx < cur_landmarks.size(); ++idx) {
+            const auto& lm = cur_landmarks.at(idx);
+            if (!lm) {
+                continue;
+            }
+            if (lm->will_be_erased()) {
+                continue;
+            }
+            if (idx >= cur_keyfrm_->frm_obs_.bearings_.size()) {
+                continue;
+            }
+
+            sum_bearing += cur_keyfrm_->frm_obs_.bearings_.at(idx);
+            ++num_bearings;
+        }
+
+        if (num_bearings > 0) {
+            const Vec3_t mean_bearing = sum_bearing / static_cast<double>(num_bearings);
+            const double mean_bearing_length = mean_bearing.norm();
+            const double bearing_variance = 1.0 - mean_bearing_length;
+            spdlog::info("equirectangular bearing variance: keyfrm_id={} src_frm_id={} num_landmarks={} mean_length={} variance={}",
+                         cur_keyfrm_->id_, cur_keyfrm_->src_frm_id_, num_bearings, mean_bearing_length, bearing_variance);
+
+            if (bearing_variance < 0.4) {
+                if (mean_bearing_length > 0.0) {
+                    const Vec3_t reverse_mean_bearing = -mean_bearing / mean_bearing_length;
+                    std::vector<bool> opposite_hemisphere_mask(cur_keyfrm_->frm_obs_.bearings_.size(), false);
+                    unsigned int num_masked = 0;
+                    for (unsigned int idx = 0; idx < cur_keyfrm_->frm_obs_.bearings_.size(); ++idx) {
+                        const auto& b = cur_keyfrm_->frm_obs_.bearings_.at(idx);
+                        if (0.0 <= b.dot(reverse_mean_bearing)) {
+                            opposite_hemisphere_mask.at(idx) = true;
+                            ++num_masked;
+                        }
+                    }
+
+                    spdlog::info("run second-pass landmark generation with opposite-hemisphere mask: keyfrm_id={} masked_keypoints={}",
+                                 cur_keyfrm_->id_, num_masked);
+                    create_new_landmarks(abort_create_new_landmarks, &opposite_hemisphere_mask, true);
+                }
+            }
+        }
+    }
+
     SPDLOG_TRACE("mapping_module: update_new_keyframe (current keyframe is {})", cur_keyfrm_->id_);
 
     // detect and resolve the duplication of the landmarks observed in the current frame
@@ -322,7 +371,9 @@ void mapping_module::store_new_keyframe() {
     map_db_->add_keyframe(cur_keyfrm_);
 }
 
-void mapping_module::create_new_landmarks(std::atomic<bool>& abort_create_new_landmarks) {
+void mapping_module::create_new_landmarks(std::atomic<bool>& abort_create_new_landmarks,
+                                          const std::vector<bool>* cur_keyfrm_mask,
+                                          bool is_second_pass) {
     // get the covisibilities of `cur_keyfrm_`
     // in order to triangulate landmarks between `cur_keyfrm_` and each of the covisibilities
     const auto cur_covisibilities = cur_keyfrm_->graph_node_->get_top_n_covisibilities(num_covisibilities_for_landmark_generation_);
@@ -379,10 +430,26 @@ void mapping_module::create_new_landmarks(std::atomic<bool>& abort_create_new_la
         // vector of matches (idx in the current, idx in the neighbor)
         std::vector<std::pair<unsigned int, unsigned int>> matches;
         if (bow_db_ && bow_vocab_) {
-            bow_tree_matcher.match_for_triangulation(cur_keyfrm_, ngh_keyfrm, E_ngh_to_cur, matches, residual_rad_thr_);
+            bow_tree_matcher.match_for_triangulation(cur_keyfrm_, ngh_keyfrm, E_ngh_to_cur, matches, residual_rad_thr_, is_second_pass);
         }
         else {
             robust_matcher.match_for_triangulation(cur_keyfrm_, ngh_keyfrm, E_ngh_to_cur, matches, residual_rad_thr_);
+        }
+
+        if (cur_keyfrm_mask && !cur_keyfrm_mask->empty()) {
+            std::vector<std::pair<unsigned int, unsigned int>> masked_matches;
+            masked_matches.reserve(matches.size());
+            for (const auto& idx_pair : matches) {
+                const auto idx_cur = idx_pair.first;
+                if (idx_cur >= cur_keyfrm_mask->size()) {
+                    continue;
+                }
+                if (!cur_keyfrm_mask->at(idx_cur)) {
+                    continue;
+                }
+                masked_matches.push_back(idx_pair);
+            }
+            matches.swap(masked_matches);
         }
 
         // triangulation

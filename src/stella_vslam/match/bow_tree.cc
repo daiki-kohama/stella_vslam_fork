@@ -12,8 +12,10 @@ unsigned int bow_tree::match_for_triangulation(const std::shared_ptr<data::keyfr
                                                const std::shared_ptr<data::keyframe>& keyfrm_2,
                                                const Mat33_t& E_12,
                                                std::vector<std::pair<unsigned int, unsigned int>>& matched_idx_pairs,
-                                               const float residual_rad_thr) const {
+                                               const float residual_rad_thr,
+                                               const bool is_second_pass) const {
     unsigned int num_matches = 0;
+    const unsigned int hamming_dist_thr = is_second_pass ? HAMMING_DIST_THR_HIGH : HAMMING_DIST_THR_LOW;
 
     // Project the center of keyframe 1 to keyframe 2
     // to acquire the epipole coordinates of the candidate keyframe
@@ -63,7 +65,7 @@ unsigned int bow_tree::match_for_triangulation(const std::shared_ptr<data::keyfr
                 const auto& desc_1 = keyfrm_1->frm_obs_.descriptors_.row(idx_1);
 
                 // Find a keypoint in keyframe 2 that has the minimum hamming distance
-                unsigned int best_hamm_dist = HAMMING_DIST_THR_LOW;
+                unsigned int best_hamm_dist = hamming_dist_thr;
                 int best_idx_2 = -1;
                 unsigned int second_best_hamm_dist = MAX_HAMMING_DIST;
 
@@ -94,7 +96,7 @@ unsigned int bow_tree::match_for_triangulation(const std::shared_ptr<data::keyfr
                     // Compute the distance
                     const auto hamm_dist = compute_descriptor_distance_32(desc_1, desc_2);
 
-                    if (HAMMING_DIST_THR_LOW < hamm_dist || best_hamm_dist < hamm_dist) {
+                    if (hamming_dist_thr < hamm_dist || best_hamm_dist < hamm_dist) {
                         continue;
                     }
 
