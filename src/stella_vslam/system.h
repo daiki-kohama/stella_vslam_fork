@@ -124,6 +124,11 @@ public:
     //! Enable temporal mapping
     void enable_temporal_mapping();
 
+    //! Run final global optimization after all frames have been processed.
+    //! Executes: GlobalBA -> outlier removal -> landmark generation, twice,
+    //! followed by a third GlobalBA (3 GlobalBAs total).
+    void run_final_global_optimization();
+
     //-----------------------------------------
     // data feeding methods
 

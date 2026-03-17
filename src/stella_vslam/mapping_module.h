@@ -62,6 +62,11 @@ public:
     //! If the size of the queue exceeds this threshold, skip the localBA
     bool is_skipping_localBA() const;
 
+    //! Run create_new_landmarks and update_new_keyframe for a given keyframe.
+    //! Intended for use in post-processing global optimization after all frames
+    //! have been fed to the system (e.g., run_final_global_optimization).
+    void run_landmark_generation_for_keyframe(const std::shared_ptr<data::keyframe>& keyfrm);
+
     //-----------------------------------------
     // management for reset process
 

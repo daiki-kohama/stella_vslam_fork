@@ -146,6 +146,15 @@ void mapping_module::abort_local_BA() {
     abort_local_BA_ = true;
 }
 
+void mapping_module::run_landmark_generation_for_keyframe(const std::shared_ptr<data::keyframe>& keyfrm) {
+    cur_keyfrm_ = keyfrm;
+    // Triangulate new landmarks with covisible keyframes
+    std::atomic<bool> abort_flag{false};
+    create_new_landmarks(abort_flag);
+    // Fuse duplicate landmarks and update graph connections
+    update_new_keyframe();
+}
+
 void mapping_module::mapping_with_new_keyframe() {
     // dequeue
     {

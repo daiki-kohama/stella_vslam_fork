@@ -28,8 +28,11 @@
 #include "stella_vslam/util/converter.h"
 #include "stella_vslam/util/image_converter.h"
 #include "stella_vslam/util/yaml.h"
+#include "stella_vslam/data/landmark.h"
+#include "stella_vslam/optimize/global_bundle_adjuster.h"
 
 #include <thread>
+#include <algorithm>
 
 #include <spdlog/spdlog.h>
 
@@ -362,6 +365,207 @@ void system::abort_loop_BA() {
 
 void system::enable_temporal_mapping() {
     map_db_->set_fixed_keyframe_id_threshold();
+}
+
+void system::run_final_global_optimization() {
+    spdlog::info("start final global optimization");
+    pause_other_threads();
+
+    // Chi-squared thresholds (significance level 5%)
+    constexpr float chi_sq_2D = 5.99146f; // 2-DOF: monocular
+    constexpr float chi_sq_3D = 7.81473f; // 3-DOF: stereo / RGBD
+
+    // -----------------------------------------------------------------
+    // Helper lambda: run one GlobalBA pass over all keyframes,
+    // apply the optimized poses / landmark positions, then remove
+    // observations whose reprojection error exceeds the chi2 threshold.
+    // Returns false if the BA was aborted.
+    // -----------------------------------------------------------------
+    auto run_global_BA_and_update = [&]() -> bool {
+        // Collect all keyframes sorted by creation order
+        auto keyfrms = map_db_->get_all_keyframes();
+        if (keyfrms.size() < 2) {
+            spdlog::warn("final global optimization: too few keyframes ({}), skipping BA",
+                         keyfrms.size());
+            return false;
+        }
+        std::sort(keyfrms.begin(), keyfrms.end(),
+                  [](const auto& a, const auto& b) { return a->id_ < b->id_; });
+
+        // --- Run Global Bundle Adjustment ---
+        std::unordered_set<unsigned int> optimized_keyfrm_ids;
+        std::unordered_set<unsigned int> optimized_landmark_ids;
+        std::unordered_set<unsigned int> optimized_marker_ids;
+        eigen_alloc_unord_map<unsigned int, Vec3_t> lm_to_pos_w_after_BA;
+        eigen_alloc_unord_map<unsigned int, Mat44_t> keyfrm_to_pose_cw_after_BA;
+        eigen_alloc_unord_map<unsigned int, std::array<Vec3_t, 4>> marker_to_pos_w_after_BA;
+
+        const optimize::global_bundle_adjuster global_BA(10, true);
+        spdlog::info("final global optimization: running global BA on {} keyframes",
+                     keyfrms.size());
+        const bool ok = global_BA.optimize(keyfrms,
+                                           optimized_keyfrm_ids,
+                                           optimized_landmark_ids,
+                                           optimized_marker_ids,
+                                           lm_to_pos_w_after_BA,
+                                           keyfrm_to_pose_cw_after_BA,
+                                           marker_to_pos_w_after_BA);
+        if (!ok) {
+            spdlog::warn("final global optimization: global BA was aborted");
+            return false;
+        }
+
+        // --- Apply results and collect outlier observations ---
+        std::vector<std::pair<std::shared_ptr<data::keyframe>,
+                              std::shared_ptr<data::landmark>>> outlier_observations;
+        {
+            std::lock_guard<std::mutex> lock(data::map_database::mtx_database_);
+
+            // Apply optimized keyframe poses
+            for (const auto& keyfrm : keyfrms) {
+                if (keyfrm->will_be_erased()) {
+                    continue;
+                }
+                if (!optimized_keyfrm_ids.count(keyfrm->id_)) {
+                    continue;
+                }
+                keyfrm->set_pose_cw(keyfrm_to_pose_cw_after_BA.at(keyfrm->id_));
+            }
+
+            // Apply optimized landmark positions, then check reprojection errors
+            const auto all_lms = map_db_->get_all_landmarks();
+            for (const auto& lm : all_lms) {
+                if (!lm || lm->will_be_erased()) {
+                    continue;
+                }
+
+                // Apply optimized 3-D position
+                if (optimized_landmark_ids.count(lm->id_)) {
+                    lm->set_pos_in_world(lm_to_pos_w_after_BA.at(lm->id_));
+                    lm->update_mean_normal_and_obs_scale_variance();
+                }
+
+                // Check reprojection error in each observing keyframe
+                const Vec3_t pos_w = lm->get_pos_in_world();
+                const auto observations = lm->get_observations();
+                for (const auto& obs : observations) {
+                    const auto keyfrm = obs.first.lock();
+                    if (!keyfrm || keyfrm->will_be_erased()) {
+                        continue;
+                    }
+                    const unsigned int idx = obs.second;
+
+                    // Project landmark into the keyframe image
+                    Vec2_t reproj;
+                    float x_right;
+                    const Mat33_t rot_cw = keyfrm->get_rot_cw();
+                    const Vec3_t trans_cw = keyfrm->get_trans_cw();
+                    if (!keyfrm->camera_->reproject_to_image(
+                            rot_cw, trans_cw, pos_w, reproj, x_right)) {
+                        // Landmark projected outside image
+                        outlier_observations.emplace_back(keyfrm, lm);
+                        continue;
+                    }
+
+                    // Compute normalised squared reprojection error (chi2)
+                    const auto& undist_keypt =
+                        keyfrm->frm_obs_.undist_keypts_.at(idx);
+                    const float inv_sigma_sq =
+                        keyfrm->orb_params_->inv_level_sigma_sq_.at(
+                            undist_keypt.octave);
+                    const float dx = reproj.x() - undist_keypt.pt.x;
+                    const float dy = reproj.y() - undist_keypt.pt.y;
+
+                    const bool has_stereo_right =
+                        (keyfrm->camera_->setup_type_ !=
+                         camera::setup_type_t::Monocular) &&
+                        !keyfrm->frm_obs_.stereo_x_right_.empty() &&
+                        idx < keyfrm->frm_obs_.stereo_x_right_.size() &&
+                        keyfrm->frm_obs_.stereo_x_right_.at(idx) >= 0.0f;
+
+                    if (has_stereo_right) {
+                        const float dx_r =
+                            x_right - keyfrm->frm_obs_.stereo_x_right_.at(idx);
+                        if ((dx * dx + dy * dy + dx_r * dx_r) * inv_sigma_sq >
+                            chi_sq_3D) {
+                            outlier_observations.emplace_back(keyfrm, lm);
+                        }
+                    }
+                    else {
+                        if ((dx * dx + dy * dy) * inv_sigma_sq > chi_sq_2D) {
+                            outlier_observations.emplace_back(keyfrm, lm);
+                        }
+                    }
+                }
+            }
+
+            // Remove outlier observations
+            for (const auto& outlier_obs : outlier_observations) {
+                const auto& keyfrm = outlier_obs.first;
+                const auto& lm = outlier_obs.second;
+                keyfrm->erase_landmark(lm);
+                lm->erase_observation(map_db_, keyfrm);
+                if (!lm->will_be_erased()) {
+                    lm->compute_descriptor();
+                    lm->update_mean_normal_and_obs_scale_variance();
+                }
+            }
+
+            // Apply optimized marker corner positions
+            for (const auto& mkr : map_db_->get_all_markers()) {
+                if (!mkr || !optimized_marker_ids.count(mkr->id_)) {
+                    continue;
+                }
+                const auto& new_corners =
+                    marker_to_pos_w_after_BA.at(mkr->id_);
+                for (size_t i = 0; i < 4; ++i) {
+                    mkr->corners_pos_w_[i] = new_corners[i];
+                }
+            }
+        } // release mtx_database_
+
+        spdlog::info("final global optimization: removed {} outlier observations",
+                     outlier_observations.size());
+        return true;
+    };
+
+    // Run 2 rounds of: GlobalBA -> remove outliers -> landmark generation,
+    // then one final GlobalBA -> total 3 GlobalBAs.
+    for (unsigned int round = 0; round < 2; ++round) {
+        spdlog::info("final global optimization: round {}/2 — global BA",
+                     round + 1);
+        if (!run_global_BA_and_update()) {
+            spdlog::warn(
+                "final global optimization: aborted at round {}/2",
+                round + 1);
+            break;
+        }
+
+        // Run create_new_landmarks + update_new_keyframe for each
+        // keyframe in chronological (ID) order
+        auto keyfrms = map_db_->get_all_keyframes();
+        std::sort(keyfrms.begin(), keyfrms.end(),
+                  [](const auto& a, const auto& b) {
+                      return a->id_ < b->id_;
+                  });
+        spdlog::info(
+            "final global optimization: round {}/2 — landmark generation "
+            "for {} keyframes",
+            round + 1, keyfrms.size());
+        for (const auto& keyfrm : keyfrms) {
+            if (keyfrm->will_be_erased()) {
+                continue;
+            }
+            mapper_->run_landmark_generation_for_keyframe(keyfrm);
+        }
+    }
+
+    // 3rd (final) Global BA
+    spdlog::info("final global optimization: 3rd (final) global BA");
+    run_global_BA_and_update();
+
+    resume_other_threads();
+    spdlog::info("finish final global optimization");
 }
 
 data::frame system::create_monocular_frame(const cv::Mat& img, const double timestamp, const cv::Mat& mask) {
