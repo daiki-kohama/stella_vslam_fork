@@ -151,13 +151,20 @@ void orb_extractor::create_rectangle_mask(const unsigned int cols, const unsigne
 }
 
 void orb_extractor::compute_image_pyramid(const cv::Mat& image) {
-    image_pyramid_.at(0) = image;
-    for (unsigned int level = 1; level < orb_params_->num_levels_; ++level) {
+    for (unsigned int level = 0; level < orb_params_->num_levels_; ++level) {
         // determine the size of an image
         const double scale = orb_params_->scale_factors_.at(level);
+        if (scale == 1.0) {
+            image_pyramid_.at(level) = image;
+            continue;
+        }
         const cv::Size size(std::round(image.cols * 1.0 / scale), std::round(image.rows * 1.0 / scale));
         // resize
-        cv::resize(image_pyramid_.at(level - 1), image_pyramid_.at(level), size, 0, 0, cv::INTER_LINEAR);
+        if (level == 0) {
+            cv::resize(image, image_pyramid_.at(level), size, 0, 0, cv::INTER_LINEAR);
+        } else {
+            cv::resize(image_pyramid_.at(level - 1), image_pyramid_.at(level), size, 0, 0, cv::INTER_LINEAR);
+        }
     }
 }
 
@@ -335,10 +342,10 @@ void orb_extractor::compute_orientation(const cv::Mat& image, std::vector<cv::Ke
 }
 
 void orb_extractor::correct_keypoint_scale(std::vector<cv::KeyPoint>& keypts_at_level, const unsigned int level) const {
-    if (level == 0) {
+    const float scale_at_level = orb_params_->scale_factors_.at(level);
+    if (scale_at_level == 1.0f) {
         return;
     }
-    const float scale_at_level = orb_params_->scale_factors_.at(level);
     for (auto& keypt_at_level : keypts_at_level) {
         keypt_at_level.pt *= scale_at_level;
     }

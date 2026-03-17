@@ -13,7 +13,8 @@ struct orb_params {
 
     //! Constructor
     orb_params(const std::string& name, const float scale_factor, const unsigned int num_levels,
-               const unsigned int ini_fast_thr, const unsigned int min_fast_thr);
+               const unsigned int ini_fast_thr, const unsigned int min_fast_thr,
+               const float scale_offset = 0.0f);
     orb_params(const std::string& name);
 
     //! Constructor
@@ -32,6 +33,7 @@ struct orb_params {
     const unsigned int num_levels_ = 8;
     const unsigned int ini_fast_thr_ = 20;
     const unsigned int min_fast_thr_ = 7;
+    const float scale_offset_ = 0.0f;
 
     //! A list of the scale factor of each pyramid layer
     std::vector<float> scale_factors_;
@@ -41,16 +43,16 @@ struct orb_params {
     std::vector<float> inv_level_sigma_sq_;
 
     //! Calculate scale factors
-    static std::vector<float> calc_scale_factors(const unsigned int num_scale_levels, const float scale_factor);
+    static std::vector<float> calc_scale_factors(const unsigned int num_scale_levels, const float scale_factor, const float scale_offset = 0.0f);
 
     //! Calculate inverses of scale factors
-    static std::vector<float> calc_inv_scale_factors(const unsigned int num_scale_levels, const float scale_factor);
+    static std::vector<float> calc_inv_scale_factors(const unsigned int num_scale_levels, const float scale_factor, const float scale_offset = 0.0f);
 
     //! Calculate squared sigmas at all levels
-    static std::vector<float> calc_level_sigma_sq(const unsigned int num_scale_levels, const float scale_factor);
+    static std::vector<float> calc_level_sigma_sq(const unsigned int num_scale_levels, const float scale_factor, const float scale_offset = 0.0f);
 
     //! Calculate inverses of squared sigmas at all levels
-    static std::vector<float> calc_inv_level_sigma_sq(const unsigned int num_scale_levels, const float scale_factor);
+    static std::vector<float> calc_inv_level_sigma_sq(const unsigned int num_scale_levels, const float scale_factor, const float scale_offset = 0.0f);
 };
 
 std::ostream& operator<<(std::ostream& os, const orb_params& oparam);
