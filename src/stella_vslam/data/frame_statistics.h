@@ -6,6 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
+#include <map>
 #include <nlohmann/json_fwd.hpp>
 
 namespace stella_vslam {
@@ -13,6 +14,24 @@ namespace data {
 
 class frame;
 class keyframe;
+
+struct summary_statistics {
+    double mean_ = 0.0;
+    double median_ = 0.0;
+    bool valid_ = false;
+};
+
+struct frame_additional_statistics {
+    unsigned int num_tracked_landmarks_ = 0;
+    summary_statistics landmark_reproj_error_px_;
+    summary_statistics landmark_parallax_deg_;
+    double landmark_direction_variance_ = 0.0;
+    bool has_landmark_direction_variance_ = false;
+    double all_feature_direction_variance_ = 0.0;
+    bool has_all_feature_direction_variance_ = false;
+    summary_statistics landmark_feature_response_;
+    summary_statistics all_feature_response_;
+};
 
 class frame_statistics {
 public:
@@ -103,6 +122,8 @@ private:
     std::unordered_map<unsigned int, double> timestamps_;
     //! Flag whether each frame is lost or not
     std::unordered_map<unsigned int, bool> is_lost_frms_;
+    //! Additional per-frame metrics
+    std::unordered_map<unsigned int, frame_additional_statistics> additional_stats_;
 };
 
 } // namespace data

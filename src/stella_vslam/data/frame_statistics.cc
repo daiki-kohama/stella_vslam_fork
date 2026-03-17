@@ -1,10 +1,75 @@
 #include "stella_vslam/data/common.h"
 #include "stella_vslam/data/frame.h"
+#include "stella_vslam/data/landmark.h"
 #include "stella_vslam/data/keyframe.h"
 #include "stella_vslam/data/frame_statistics.h"
 
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <numeric>
+
+namespace {
+
+double clamp_unit(const double value) {
+    return std::max(-1.0, std::min(1.0, value));
+}
+
+stella_vslam::data::summary_statistics compute_summary_statistics(std::vector<double> values) {
+    stella_vslam::data::summary_statistics stats;
+    if (values.empty()) {
+        return stats;
+    }
+
+    const double sum = std::accumulate(values.begin(), values.end(), 0.0);
+    stats.mean_ = sum / values.size();
+
+    std::sort(values.begin(), values.end());
+    const auto mid = values.size() / 2;
+    if (values.size() % 2 == 0) {
+        stats.median_ = 0.5 * (values.at(mid - 1) + values.at(mid));
+    }
+    else {
+        stats.median_ = values.at(mid);
+    }
+
+    stats.valid_ = true;
+    return stats;
+}
+
+double compute_direction_variance(const std::vector<stella_vslam::Vec3_t>& unit_vectors, bool& valid) {
+    valid = false;
+    if (unit_vectors.empty()) {
+        return 0.0;
+    }
+
+    stella_vslam::Vec3_t mean_vector = stella_vslam::Vec3_t::Zero();
+    for (const auto& unit_vector : unit_vectors) {
+        mean_vector += unit_vector;
+    }
+    mean_vector /= static_cast<double>(unit_vectors.size());
+
+    valid = true;
+    return 1.0 - mean_vector.norm();
+}
+
+nlohmann::json summary_statistics_to_json(const stella_vslam::data::summary_statistics& stats) {
+    if (!stats.valid_) {
+        return {
+            {"mean", nullptr},
+            {"median", nullptr},
+        };
+    }
+
+    return {
+        {"mean", stats.mean_},
+        {"median", stats.median_},
+    };
+}
+
+} // namespace
 
 namespace stella_vslam {
 namespace data {
@@ -22,6 +87,113 @@ void frame_statistics::update_frame_statistics(const data::frame& frm, const boo
         rel_cam_poses_from_ref_keyfrms_[frm.id_] = rel_cam_pose_from_ref_keyfrm;
         assert(!timestamps_.count(frm.id_));
         timestamps_[frm.id_] = frm.timestamp_;
+
+        frame_additional_statistics additional_stats;
+        std::vector<double> landmark_reproj_errors;
+        std::vector<double> landmark_parallaxes_deg;
+        std::vector<double> landmark_feature_responses;
+        std::vector<double> all_feature_responses;
+        std::vector<Vec3_t> landmark_directions;
+        std::vector<Vec3_t> feature_directions;
+
+        all_feature_responses.reserve(frm.frm_obs_.undist_keypts_.size());
+        feature_directions.reserve(frm.frm_obs_.bearings_.size());
+        for (const auto& keypt : frm.frm_obs_.undist_keypts_) {
+            all_feature_responses.push_back(keypt.response);
+        }
+        for (const auto& bearing : frm.frm_obs_.bearings_) {
+            const auto norm = bearing.norm();
+            if (norm <= 0.0) {
+                continue;
+            }
+            feature_directions.push_back(bearing / norm);
+        }
+
+        for (unsigned int idx = 0; idx < frm.frm_obs_.undist_keypts_.size(); ++idx) {
+            const auto& lm = frm.get_landmark(idx);
+            if (!lm) {
+                continue;
+            }
+            if (lm->will_be_erased()) {
+                continue;
+            }
+
+            // the observation has been considered as inlier in the pose optimization
+            assert(lm->has_observation());
+            // count up
+            ++additional_stats.num_tracked_landmarks_;
+
+            const auto pos_w = lm->get_pos_in_world();
+            const Vec3_t cam_to_lm = pos_w - frm.get_trans_wc();
+            const auto cam_to_lm_norm = cam_to_lm.norm();
+            if (cam_to_lm_norm <= 0.0) {
+                continue;
+            }
+
+            const Vec3_t lm_direction = cam_to_lm / cam_to_lm_norm;
+            landmark_directions.push_back(lm_direction);
+
+            const auto obs_mean_normal = lm->get_obs_mean_normal();
+            const double parallax_deg = std::acos(clamp_unit(lm_direction.dot(obs_mean_normal))) * 180.0 / std::acos(-1.0);
+            landmark_parallaxes_deg.push_back(parallax_deg);
+
+            const auto& keypt = frm.frm_obs_.undist_keypts_.at(idx);
+            landmark_feature_responses.push_back(keypt.response);
+
+            Vec2_t reproj = Vec2_t::Zero();
+            float reproj_x_right = -1.0f;
+            if (frm.camera_->reproject_to_image(frm.get_rot_cw(), frm.get_trans_cw(), pos_w, reproj, reproj_x_right)) {
+                const double dx = static_cast<double>(keypt.pt.x) - reproj(0);
+                const double dy = static_cast<double>(keypt.pt.y) - reproj(1);
+                double reproj_error = std::sqrt(dx * dx + dy * dy);
+
+                if (!frm.frm_obs_.stereo_x_right_.empty()) {
+                    const float observed_x_right = frm.frm_obs_.stereo_x_right_.at(idx);
+                    if (0.0f <= observed_x_right && 0.0f <= reproj_x_right) {
+                        const double dx_right = static_cast<double>(observed_x_right) - reproj_x_right;
+                        reproj_error = std::sqrt(dx * dx + dy * dy + dx_right * dx_right);
+                    }
+                }
+
+                landmark_reproj_errors.push_back(reproj_error);
+            }
+        }
+
+        additional_stats.landmark_reproj_error_px_ = compute_summary_statistics(landmark_reproj_errors);
+        additional_stats.landmark_parallax_deg_ = compute_summary_statistics(landmark_parallaxes_deg);
+        additional_stats.landmark_feature_response_ = compute_summary_statistics(landmark_feature_responses);
+        additional_stats.all_feature_response_ = compute_summary_statistics(all_feature_responses);
+        additional_stats.landmark_direction_variance_ = compute_direction_variance(landmark_directions, additional_stats.has_landmark_direction_variance_);
+        additional_stats.all_feature_direction_variance_ = compute_direction_variance(feature_directions, additional_stats.has_all_feature_direction_variance_);
+        additional_stats_[frm.id_] = additional_stats;
+
+        spdlog::info("frame {} stats: num_tracked_lms={}", frm.id_, additional_stats.num_tracked_landmarks_);
+        if (additional_stats.landmark_reproj_error_px_.valid_) {
+            spdlog::info("  landmark_reproj_error_px: mean={:.4f}, median={:.4f}",
+                         additional_stats.landmark_reproj_error_px_.mean_,
+                         additional_stats.landmark_reproj_error_px_.median_);
+        }
+        if (additional_stats.landmark_parallax_deg_.valid_) {
+            spdlog::info("  landmark_parallax_deg: mean={:.4f}, median={:.4f}",
+                         additional_stats.landmark_parallax_deg_.mean_,
+                         additional_stats.landmark_parallax_deg_.median_);
+        }
+        if (additional_stats.has_landmark_direction_variance_) {
+            spdlog::info("  landmark_direction_variance: {:.6f}", additional_stats.landmark_direction_variance_);
+        }
+        if (additional_stats.has_all_feature_direction_variance_) {
+            spdlog::info("  all_feature_direction_variance: {:.6f}", additional_stats.all_feature_direction_variance_);
+        }
+        if (additional_stats.landmark_feature_response_.valid_) {
+            spdlog::info("  landmark_feature_response: mean={:.4f}, median={:.4f}",
+                         additional_stats.landmark_feature_response_.mean_,
+                         additional_stats.landmark_feature_response_.median_);
+        }
+        if (additional_stats.all_feature_response_.valid_) {
+            spdlog::info("  all_feature_response: mean={:.4f}, median={:.4f}",
+                         additional_stats.all_feature_response_.mean_,
+                         additional_stats.all_feature_response_.median_);
+        }
     }
 
     assert(!is_lost_frms_.count(frm.id_));
@@ -127,10 +299,28 @@ nlohmann::json frame_statistics::to_json() const {
         const Mat44_t cam_pose_cw = rel_cam_pose_cr * cam_pose_rw;
         Mat44_t cam_pose_wc = util::converter::inverse_pose(cam_pose_cw);
 
-        frames[std::to_string(frm_id)] = {
+        nlohmann::json frame_json = {
             {"ref_keyfrm_id", ref_keyfrm->id_},
             {"rot_cw", convert_rotation_to_json(cam_pose_cw.block<3, 3>(0, 0))},
             {"trans_cw", convert_translation_to_json(cam_pose_cw.block<3, 1>(0, 3))}};
+
+        const auto additional_stats_itr = additional_stats_.find(frm_id);
+        if (additional_stats_itr != additional_stats_.end()) {
+            const auto& stats = additional_stats_itr->second;
+            frame_json["num_tracked_landmarks"] = stats.num_tracked_landmarks_;
+            frame_json["landmark_reproj_error_px"] = summary_statistics_to_json(stats.landmark_reproj_error_px_);
+            frame_json["landmark_parallax_deg"] = summary_statistics_to_json(stats.landmark_parallax_deg_);
+            frame_json["landmark_direction_variance"] = stats.has_landmark_direction_variance_
+                                                            ? nlohmann::json(stats.landmark_direction_variance_)
+                                                            : nlohmann::json(nullptr);
+            frame_json["all_feature_direction_variance"] = stats.has_all_feature_direction_variance_
+                                                              ? nlohmann::json(stats.all_feature_direction_variance_)
+                                                              : nlohmann::json(nullptr);
+            frame_json["landmark_feature_response"] = summary_statistics_to_json(stats.landmark_feature_response_);
+            frame_json["all_feature_response"] = summary_statistics_to_json(stats.all_feature_response_);
+        }
+
+        frames[std::to_string(frm_id)] = std::move(frame_json);
     }
 
     if (rk_itr != rk_itr_end || rc_itr != rc_itr_end) {
@@ -147,6 +337,7 @@ void frame_statistics::clear() {
     rel_cam_poses_from_ref_keyfrms_.clear();
     timestamps_.clear();
     is_lost_frms_.clear();
+    additional_stats_.clear();
 }
 
 } // namespace data
