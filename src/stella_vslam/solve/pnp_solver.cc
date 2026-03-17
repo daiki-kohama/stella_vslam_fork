@@ -2,6 +2,7 @@
 #include "stella_vslam/util/fancy_index.h"
 #include "stella_vslam/util/random_array.h"
 #include "stella_vslam/util/trigonometric.h"
+#include <optional>
 
 #include <spdlog/spdlog.h>
 
@@ -14,10 +15,11 @@ pnp_solver::pnp_solver(const eigen_alloc_vector<Vec3_t>& valid_bearings,
                        const std::vector<float>& scale_factors,
                        const unsigned int min_num_inliers,
                        const bool use_fixed_seed,
-                       const unsigned int gauss_newton_num_iter)
+                       const unsigned int gauss_newton_num_iter,
+                       const std::optional<unsigned int> random_seed)
     : num_matches_(valid_bearings.size()), valid_bearings_(valid_bearings),
       valid_points_(valid_points), min_num_inliers_(min_num_inliers),
-      random_engine_(util::create_random_engine(use_fixed_seed)),
+      random_engine_(util::create_random_engine(use_fixed_seed, random_seed)),
       gauss_newton_num_iter_(gauss_newton_num_iter) {
     spdlog::trace("CONSTRUCT: solve::pnp_solver");
 

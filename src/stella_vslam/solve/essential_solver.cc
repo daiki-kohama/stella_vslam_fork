@@ -8,9 +8,10 @@ namespace stella_vslam {
 namespace solve {
 
 essential_solver::essential_solver(const eigen_alloc_vector<Vec3_t>& bearings_1, const eigen_alloc_vector<Vec3_t>& bearings_2,
-                                   const std::vector<std::pair<int, int>>& matches_12, bool use_fixed_seed)
+                                   const std::vector<std::pair<int, int>>& matches_12, bool use_fixed_seed,
+                                   std::optional<unsigned int> random_seed)
     : bearings_1_(bearings_1), bearings_2_(bearings_2), matches_12_(matches_12),
-      random_engine_(util::create_random_engine(use_fixed_seed)) {}
+      random_engine_(util::create_random_engine(use_fixed_seed, random_seed)) {}
 
 void essential_solver::find_via_ransac(const unsigned int max_num_iter, const bool recompute, const unsigned int min_set_size) {
     const auto num_matches = static_cast<unsigned int>(matches_12_.size());

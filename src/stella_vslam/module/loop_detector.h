@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 
 #include <yaml-cpp/yaml.h>
 
@@ -192,6 +193,8 @@ private:
 
     //! Use fixed random seed for RANSAC if true
     const bool use_fixed_seed_;
+    //! Random seed for RANSAC (if set, this value is used regardless of use_fixed_seed)
+    const std::optional<unsigned int> random_seed_;
 
     const float num_common_words_thr_ratio_ = 0.8f;
 };

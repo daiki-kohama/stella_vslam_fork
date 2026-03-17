@@ -5,13 +5,16 @@
 #include <algorithm>
 #include <functional>
 #include <cassert>
+#include <optional>
 
 namespace stella_vslam {
 namespace util {
 
-std::mt19937 create_random_engine(bool use_fixed_seed) {
-    std::mt19937 random_engine;
-    if (use_fixed_seed) {
+std::mt19937 create_random_engine(bool use_fixed_seed, std::optional<unsigned int> random_seed) {
+    if (random_seed.has_value()) {
+        return std::mt19937(random_seed.value());
+    }
+    else if (use_fixed_seed) {
         return std::mt19937();
     }
     else {

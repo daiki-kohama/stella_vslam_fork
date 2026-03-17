@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <random>
+#include <optional>
 
 namespace stella_vslam {
 namespace solve {
@@ -15,7 +16,8 @@ public:
 
     //! Constructor
     essential_solver(const eigen_alloc_vector<Vec3_t>& bearings_1, const eigen_alloc_vector<Vec3_t>& bearings_2,
-                     const std::vector<std::pair<int, int>>& matches_12, bool use_fixed_seed = false);
+                     const std::vector<std::pair<int, int>>& matches_12, bool use_fixed_seed = false,
+                     std::optional<unsigned int> random_seed = std::nullopt);
 
     //! Destructor
     virtual ~essential_solver() = default;

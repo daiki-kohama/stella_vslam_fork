@@ -96,6 +96,9 @@ initializer::initializer(data::map_database* map_db,
       num_ba_iters_(yaml_node["num_ba_iterations"].as<unsigned int>(100)),
       scaling_factor_(yaml_node["scaling_factor"].as<float>(1.0)),
       use_fixed_seed_(yaml_node["use_fixed_seed"].as<bool>(false)),
+      random_seed_((yaml_node["random_seed"] && !yaml_node["random_seed"].IsNull())
+                       ? std::optional<unsigned int>(yaml_node["random_seed"].as<unsigned int>())
+                       : std::nullopt),
       gain_threshold_(yaml_node["gain_threshold"].as<float>(1e-5)),
       verbose_(yaml_node["verbose"].as<bool>(false)) {
     spdlog::debug("CONSTRUCT: module::initializer");
@@ -202,14 +205,14 @@ void initializer::create_initializer(data::frame& curr_frm) {
             initializer_ = std::unique_ptr<initialize::perspective>(
                 new initialize::perspective(
                     init_frm_, num_ransac_iters_, min_num_triangulated_pts_, min_num_valid_pts_,
-                    parallax_deg_thr_, reproj_err_thr_, use_fixed_seed_));
+                    parallax_deg_thr_, reproj_err_thr_, use_fixed_seed_, random_seed_));
             break;
         }
         case camera::model_type_t::Equirectangular: {
             initializer_ = std::unique_ptr<initialize::bearing_vector>(
                 new initialize::bearing_vector(
                     init_frm_, num_ransac_iters_, min_num_triangulated_pts_, min_num_valid_pts_,
-                    parallax_deg_thr_, reproj_err_thr_, use_fixed_seed_));
+                    parallax_deg_thr_, reproj_err_thr_, use_fixed_seed_, random_seed_));
             break;
         }
     }

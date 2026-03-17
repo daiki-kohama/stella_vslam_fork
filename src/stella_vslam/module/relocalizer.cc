@@ -17,6 +17,7 @@ relocalizer::relocalizer(const std::shared_ptr<optimize::pose_optimizer>& pose_o
                          const double robust_match_lowe_ratio,
                          const unsigned int min_num_bow_matches, const unsigned int min_num_valid_obs,
                          const bool use_fixed_seed,
+                         const std::optional<unsigned int> random_seed,
                          const bool search_neighbor,
                          const unsigned int top_n_covisibilities_to_search,
                          const float num_common_words_thr_ratio,
@@ -25,7 +26,7 @@ relocalizer::relocalizer(const std::shared_ptr<optimize::pose_optimizer>& pose_o
     : min_num_bow_matches_(min_num_bow_matches), min_num_valid_obs_(min_num_valid_obs),
       bow_matcher_(bow_match_lowe_ratio, false), proj_matcher_(proj_match_lowe_ratio, false),
       robust_matcher_(robust_match_lowe_ratio, false),
-      pose_optimizer_(pose_optimizer), use_fixed_seed_(use_fixed_seed),
+      pose_optimizer_(pose_optimizer), use_fixed_seed_(use_fixed_seed), random_seed_(random_seed),
       search_neighbor_(search_neighbor),
       top_n_covisibilities_to_search_(top_n_covisibilities_to_search),
       num_common_words_thr_ratio_(num_common_words_thr_ratio),
@@ -42,6 +43,9 @@ relocalizer::relocalizer(const std::shared_ptr<optimize::pose_optimizer>& pose_o
                   yaml_node["min_num_bow_matches"].as<unsigned int>(20),
                   yaml_node["min_num_valid_obs"].as<unsigned int>(50),
                   yaml_node["use_fixed_seed"].as<bool>(false),
+                  (yaml_node["random_seed"] && !yaml_node["random_seed"].IsNull())
+                      ? std::optional<unsigned int>(yaml_node["random_seed"].as<unsigned int>())
+                      : std::nullopt,
                   yaml_node["search_neighbor"].as<bool>(true),
                   yaml_node["top_n_covisibilities_to_search"].as<unsigned int>(10),
                   yaml_node["num_common_words_thr_ratio"].as<float>(0.8f),
@@ -422,7 +426,7 @@ std::unique_ptr<solve::pnp_solver> relocalizer::setup_pnp_solver(const std::vect
         valid_points.at(i) = valid_assoc_lms.at(i)->get_pos_in_world();
     }
     // Setup PnP solver
-    return std::unique_ptr<solve::pnp_solver>(new solve::pnp_solver(valid_bearings, octaves, valid_points, scale_factors, 10, use_fixed_seed_));
+    return std::unique_ptr<solve::pnp_solver>(new solve::pnp_solver(valid_bearings, octaves, valid_points, scale_factors, 10, use_fixed_seed_, 10, random_seed_));
 }
 
 } // namespace module

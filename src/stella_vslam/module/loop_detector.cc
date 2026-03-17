@@ -29,6 +29,9 @@ loop_detector::loop_detector(data::bow_database* bow_db, data::bow_vocabulary* b
       num_optimized_inliers_thr_(yaml_node["num_optimized_inliers_thr"].as<unsigned int>(20)),
       top_n_covisibilities_to_search_(yaml_node["top_n_covisibilities_to_search"].as<unsigned int>(0)),
       use_fixed_seed_(yaml_node["use_fixed_seed"].as<bool>(false)),
+      random_seed_((yaml_node["random_seed"] && !yaml_node["random_seed"].IsNull())
+                       ? std::optional<unsigned int>(yaml_node["random_seed"].as<unsigned int>())
+                       : std::nullopt),
       num_common_words_thr_ratio_(yaml_node["num_common_words_thr_ratio"].as<float>(0.8f)) {
     spdlog::debug("CONSTRUCT: loop_detector");
 }
@@ -422,7 +425,7 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
         // Setup PnP solver
         auto pnp_solver = std::unique_ptr<solve::pnp_solver>(new solve::pnp_solver(valid_bearings, octaves, valid_points,
                                                                                    cur_keyfrm_->orb_params_->scale_factors_,
-                                                                                   10, use_fixed_seed_));
+                                                                                   10, use_fixed_seed_, 10, random_seed_));
 
         pnp_solver->find_via_ransac(30, false);
         if (!pnp_solver->solution_is_valid()) {

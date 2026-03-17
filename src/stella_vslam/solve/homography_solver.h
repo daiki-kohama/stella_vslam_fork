@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <random>
+#include <optional>
 
 #include <opencv2/core/types.hpp>
 
@@ -17,7 +18,8 @@ public:
 
     //! Constructor
     homography_solver(const std::vector<cv::KeyPoint>& undist_keypts_1, const std::vector<cv::KeyPoint>& undist_keypts_2,
-                      const std::vector<std::pair<int, int>>& matches_12, const float sigma, bool use_fixed_seed = false);
+                      const std::vector<std::pair<int, int>>& matches_12, const float sigma, bool use_fixed_seed = false,
+                      std::optional<unsigned int> random_seed = std::nullopt);
 
     //! Destructor
     virtual ~homography_solver() = default;

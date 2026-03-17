@@ -8,9 +8,10 @@ namespace stella_vslam {
 namespace solve {
 
 homography_solver::homography_solver(const std::vector<cv::KeyPoint>& undist_keypts_1, const std::vector<cv::KeyPoint>& undist_keypts_2,
-                                     const std::vector<std::pair<int, int>>& matches_12, const float sigma, bool use_fixed_seed)
+                                     const std::vector<std::pair<int, int>>& matches_12, const float sigma, bool use_fixed_seed,
+                                     std::optional<unsigned int> random_seed)
     : undist_keypts_1_(undist_keypts_1), undist_keypts_2_(undist_keypts_2), matches_12_(matches_12), sigma_(sigma),
-      random_engine_(util::create_random_engine(use_fixed_seed)) {}
+      random_engine_(util::create_random_engine(use_fixed_seed, random_seed)) {}
 
 void homography_solver::find_via_ransac(const unsigned int max_num_iter, const bool recompute) {
     const auto num_matches = static_cast<unsigned int>(matches_12_.size());

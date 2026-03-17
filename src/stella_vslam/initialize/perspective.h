@@ -4,6 +4,8 @@
 #include "stella_vslam/type.h"
 #include "stella_vslam/initialize/base.h"
 
+#include <optional>
+
 namespace stella_vslam {
 
 namespace data {
@@ -25,7 +27,8 @@ public:
                 const unsigned int min_num_valid_pts,
                 const float parallax_deg_thr,
                 const float reproj_err_thr,
-                bool use_fixed_seed = false);
+                bool use_fixed_seed = false,
+                std::optional<unsigned int> random_seed = std::nullopt);
 
     //! Destructor
     ~perspective() override;
@@ -52,6 +55,8 @@ private:
 
     //! Use fixed random seed for RANSAC if true
     const bool use_fixed_seed_;
+    //! Random seed for RANSAC (if set, this value is used regardless of use_fixed_seed)
+    const std::optional<unsigned int> random_seed_;
 };
 
 } // namespace initialize

@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <random>
+#include <optional>
 
 namespace stella_vslam {
 namespace solve {
@@ -21,7 +22,8 @@ public:
                const std::vector<float>& scale_factors,
                unsigned int min_num_inliers = 10,
                bool use_fixed_seed = false,
-               unsigned int gauss_newton_num_iter = 10);
+               unsigned int gauss_newton_num_iter = 10,
+               std::optional<unsigned int> random_seed = std::nullopt);
 
     //! Destructor
     virtual ~pnp_solver();
