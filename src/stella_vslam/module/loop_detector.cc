@@ -30,8 +30,8 @@ loop_detector::loop_detector(data::bow_database* bow_db, data::bow_vocabulary* b
       top_n_covisibilities_to_search_(yaml_node["top_n_covisibilities_to_search"].as<unsigned int>(0)),
       use_fixed_seed_(yaml_node["use_fixed_seed"].as<bool>(false)),
       random_seed_((yaml_node["random_seed"] && !yaml_node["random_seed"].IsNull())
-                       ? std::optional<unsigned int>(yaml_node["random_seed"].as<unsigned int>())
-                       : std::nullopt),
+                       ? util::random_seed_t(yaml_node["random_seed"].as<unsigned int>())
+                       : util::random_seed_t{}),
       num_common_words_thr_ratio_(yaml_node["num_common_words_thr_ratio"].as<float>(0.8f)) {
     spdlog::debug("CONSTRUCT: loop_detector");
 }

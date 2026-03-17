@@ -17,7 +17,7 @@ relocalizer::relocalizer(const std::shared_ptr<optimize::pose_optimizer>& pose_o
                          const double robust_match_lowe_ratio,
                          const unsigned int min_num_bow_matches, const unsigned int min_num_valid_obs,
                          const bool use_fixed_seed,
-                         const std::optional<unsigned int> random_seed,
+                         const util::random_seed_t random_seed,
                          const bool search_neighbor,
                          const unsigned int top_n_covisibilities_to_search,
                          const float num_common_words_thr_ratio,
@@ -44,8 +44,8 @@ relocalizer::relocalizer(const std::shared_ptr<optimize::pose_optimizer>& pose_o
                   yaml_node["min_num_valid_obs"].as<unsigned int>(50),
                   yaml_node["use_fixed_seed"].as<bool>(false),
                   (yaml_node["random_seed"] && !yaml_node["random_seed"].IsNull())
-                      ? std::optional<unsigned int>(yaml_node["random_seed"].as<unsigned int>())
-                      : std::nullopt,
+                      ? util::random_seed_t(yaml_node["random_seed"].as<unsigned int>())
+                      : util::random_seed_t{},
                   yaml_node["search_neighbor"].as<bool>(true),
                   yaml_node["top_n_covisibilities_to_search"].as<unsigned int>(10),
                   yaml_node["num_common_words_thr_ratio"].as<float>(0.8f),

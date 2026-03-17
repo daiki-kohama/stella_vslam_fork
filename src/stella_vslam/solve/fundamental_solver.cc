@@ -10,7 +10,7 @@ namespace solve {
 
 fundamental_solver::fundamental_solver(const std::vector<cv::KeyPoint>& undist_keypts_1, const std::vector<cv::KeyPoint>& undist_keypts_2,
                                        const std::vector<std::pair<int, int>>& matches_12, const float sigma, bool use_fixed_seed,
-                                       std::optional<unsigned int> random_seed)
+                                       util::random_seed_t random_seed)
     : undist_keypts_1_(undist_keypts_1), undist_keypts_2_(undist_keypts_2), matches_12_(matches_12), sigma_(sigma),
       random_engine_(util::create_random_engine(use_fixed_seed, random_seed)) {}
 

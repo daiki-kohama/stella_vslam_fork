@@ -5,7 +5,7 @@
 
 #include <vector>
 #include <random>
-#include <optional>
+#include "stella_vslam/util/random_seed.h"
 
 #include <opencv2/core/types.hpp>
 
@@ -19,7 +19,7 @@ public:
     //! Constructor
     fundamental_solver(const std::vector<cv::KeyPoint>& undist_keypts_1, const std::vector<cv::KeyPoint>& undist_keypts_2,
                        const std::vector<std::pair<int, int>>& matches_12, const float sigma, bool use_fixed_seed = false,
-                       std::optional<unsigned int> random_seed = std::nullopt);
+                       util::random_seed_t random_seed = util::random_seed_t{});
 
     //! Destructor
     virtual ~fundamental_solver() = default;

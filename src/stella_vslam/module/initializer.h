@@ -6,7 +6,7 @@
 #include "stella_vslam/data/bow_vocabulary_fwd.h"
 
 #include <memory>
-#include <optional>
+#include "stella_vslam/util/random_seed.h"
 
 namespace stella_vslam {
 
@@ -89,7 +89,7 @@ private:
     //! Use fixed random seed for RANSAC if true
     const bool use_fixed_seed_;
     //! Random seed for RANSAC (if set, this value is used regardless of use_fixed_seed)
-    const std::optional<unsigned int> random_seed_;
+    const util::random_seed_t random_seed_;
     //! Gain threshold (for g2o)
     const float gain_threshold_;
     //! Verbosity (for g2o)

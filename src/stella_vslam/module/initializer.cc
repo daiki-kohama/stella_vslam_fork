@@ -97,8 +97,8 @@ initializer::initializer(data::map_database* map_db,
       scaling_factor_(yaml_node["scaling_factor"].as<float>(1.0)),
       use_fixed_seed_(yaml_node["use_fixed_seed"].as<bool>(false)),
       random_seed_((yaml_node["random_seed"] && !yaml_node["random_seed"].IsNull())
-                       ? std::optional<unsigned int>(yaml_node["random_seed"].as<unsigned int>())
-                       : std::nullopt),
+                       ? util::random_seed_t(yaml_node["random_seed"].as<unsigned int>())
+                       : util::random_seed_t{}),
       gain_threshold_(yaml_node["gain_threshold"].as<float>(1e-5)),
       verbose_(yaml_node["verbose"].as<bool>(false)) {
     spdlog::debug("CONSTRUCT: module::initializer");

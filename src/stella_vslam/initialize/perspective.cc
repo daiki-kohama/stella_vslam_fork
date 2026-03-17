@@ -20,7 +20,7 @@ perspective::perspective(const data::frame& ref_frm,
                          const float parallax_deg_thr,
                          const float reproj_err_thr,
                          bool use_fixed_seed,
-                         std::optional<unsigned int> random_seed)
+                         util::random_seed_t random_seed)
     : base(ref_frm, num_ransac_iters, min_num_triangulated, min_num_valid_pts, parallax_deg_thr, reproj_err_thr),
       ref_cam_matrix_(get_camera_matrix(ref_frm.camera_)), use_fixed_seed_(use_fixed_seed), random_seed_(random_seed) {
     spdlog::debug("CONSTRUCT: initialize::perspective");

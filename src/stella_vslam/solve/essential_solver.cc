@@ -9,7 +9,7 @@ namespace solve {
 
 essential_solver::essential_solver(const eigen_alloc_vector<Vec3_t>& bearings_1, const eigen_alloc_vector<Vec3_t>& bearings_2,
                                    const std::vector<std::pair<int, int>>& matches_12, bool use_fixed_seed,
-                                   std::optional<unsigned int> random_seed)
+                                   util::random_seed_t random_seed)
     : bearings_1_(bearings_1), bearings_2_(bearings_2), matches_12_(matches_12),
       random_engine_(util::create_random_engine(use_fixed_seed, random_seed)) {}
 

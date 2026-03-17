@@ -6,7 +6,7 @@
 
 #include <vector>
 #include <random>
-#include <optional>
+#include "stella_vslam/util/random_seed.h"
 
 namespace stella_vslam {
 namespace solve {
@@ -23,7 +23,7 @@ public:
                unsigned int min_num_inliers = 10,
                bool use_fixed_seed = false,
                unsigned int gauss_newton_num_iter = 10,
-               std::optional<unsigned int> random_seed = std::nullopt);
+               util::random_seed_t random_seed = util::random_seed_t{});
 
     //! Destructor
     virtual ~pnp_solver();

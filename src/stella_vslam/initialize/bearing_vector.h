@@ -4,7 +4,7 @@
 #include "stella_vslam/type.h"
 #include "stella_vslam/initialize/base.h"
 
-#include <optional>
+#include "stella_vslam/util/random_seed.h"
 
 namespace stella_vslam {
 
@@ -28,7 +28,7 @@ public:
                    const float parallax_deg_thr,
                    const float reproj_err_thr,
                    bool use_fixed_seed = false,
-                   std::optional<unsigned int> random_seed = std::nullopt);
+                   util::random_seed_t random_seed = util::random_seed_t{});
 
     //! Destructor
     ~bearing_vector() override;
@@ -44,7 +44,7 @@ private:
     //! Use fixed random seed for RANSAC if true
     const bool use_fixed_seed_;
     //! Random seed for RANSAC (if set, this value is used regardless of use_fixed_seed)
-    const std::optional<unsigned int> random_seed_;
+    const util::random_seed_t random_seed_;
 };
 
 } // namespace initialize

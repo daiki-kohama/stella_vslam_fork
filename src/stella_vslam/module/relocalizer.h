@@ -8,7 +8,7 @@
 #include "stella_vslam/solve/pnp_solver.h"
 
 #include <memory>
-#include <optional>
+#include "stella_vslam/util/random_seed.h"
 
 namespace stella_vslam {
 
@@ -27,7 +27,7 @@ public:
                          const double robust_match_lowe_ratio = 0.8,
                          const unsigned int min_num_bow_matches = 20, const unsigned int min_num_valid_obs = 50,
                          const bool use_fixed_seed = false,
-                         const std::optional<unsigned int> random_seed = std::nullopt,
+                         const util::random_seed_t random_seed = util::random_seed_t{},
                          const bool search_neighbor = true,
                          const unsigned int top_n_covisibilities_to_search = 10,
                          const float num_common_words_thr_ratio = 0.8f,
@@ -91,7 +91,7 @@ private:
     //! Use fixed random seed for RANSAC if true
     const bool use_fixed_seed_ = false;
     //! Random seed for RANSAC (if set, this value is used regardless of use_fixed_seed)
-    const std::optional<unsigned int> random_seed_ = std::nullopt;
+    const util::random_seed_t random_seed_;
 
     //! If true, points used by the PnP solver are searched not only from candidate keyframes, but also from neighbor keyframes
     const bool search_neighbor_ = true;
