@@ -1,6 +1,7 @@
 #ifndef STELLA_VSLAM_MODULE_LOOP_DETECTOR_H
 #define STELLA_VSLAM_MODULE_LOOP_DETECTOR_H
 
+#include "stella_vslam/type.h"
 #include "stella_vslam/data/bow_vocabulary.h"
 #include "stella_vslam/module/type.h"
 #include "stella_vslam/optimize/transform_optimizer.h"
@@ -115,7 +116,7 @@ private:
      * Select ONE candidate from the candidates via linear and nonlinear Sim3 validation
      */
     bool select_loop_candidate_via_Sim3(
-        const std::unordered_set<std::shared_ptr<data::keyframe>>& loop_candidates,
+        const nondeterministic::unordered_set<std::shared_ptr<data::keyframe>>& loop_candidates,
         std::shared_ptr<data::keyframe>& selected_candidate,
         g2o::Sim3& g2o_Sim3_world_to_curr,
         std::vector<std::shared_ptr<data::landmark>>& curr_match_lms_observed_in_cand) const;
@@ -175,7 +176,7 @@ private:
     //! previously detected keyframe sets as loop candidate
     keyframe_sets cont_detected_keyfrm_sets_;
     //! loop candidate for validation
-    std::unordered_set<std::shared_ptr<data::keyframe>> loop_candidates_to_validate_;
+    nondeterministic::unordered_set<std::shared_ptr<data::keyframe>> loop_candidates_to_validate_;
 
     //! matches between the keypoint indices of the current keyframe and the landmarks observed in the candidate
     std::vector<std::shared_ptr<data::landmark>> curr_match_lms_observed_in_cand_;

@@ -1,6 +1,7 @@
 #ifndef STELLA_VSLAM_DATA_BOW_DATABASE_H
 #define STELLA_VSLAM_DATA_BOW_DATABASE_H
 
+#include "stella_vslam/type.h"
 #include "stella_vslam/data/bow_vocabulary.h"
 
 #include <mutex>
