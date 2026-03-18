@@ -11,6 +11,7 @@
 #include "stella_vslam/optimize/internal/se3/reproj_edge_wrapper.h"
 #include "stella_vslam/util/converter.h"
 
+#include <fstream>
 #include <unordered_map>
 
 #include <Eigen/StdVector>
@@ -372,6 +373,60 @@ void local_bundle_adjuster_g2o::optimize(data::map_database* map_db,
                 outlier_observations.emplace_back(std::make_pair(reproj_edge_wrap.shot_, reproj_edge_wrap.lm_));
             }
         }
+    }
+
+    // Write current keyframe landmarks to CSV before updating map information
+    std::unordered_map<unsigned int, bool> outlier_lm_ids_in_curr_keyfrm;
+    outlier_lm_ids_in_curr_keyfrm.reserve(outlier_observations.size());
+    for (const auto& outlier_obs : outlier_observations) {
+        const auto& keyfrm = outlier_obs.first;
+        const auto& lm = outlier_obs.second;
+        if (!keyfrm || !lm) {
+            continue;
+        }
+        if (keyfrm->id_ == curr_keyfrm->id_) {
+            outlier_lm_ids_in_curr_keyfrm[lm->id_] = true;
+        }
+    }
+
+    std::ofstream csv_file("matches/mapping_with_new_keyframe.csv", std::ios::app);
+    if (csv_file.is_open()) {
+        csv_file.seekp(0, std::ios::end);
+        const bool is_empty = csv_file.tellp() == 0;
+        csv_file.seekp(0, std::ios::end);
+
+        if (is_empty) {
+            csv_file << "keyfrm_id,frm_id,lm_id,u,v,num_observations,is_outlier\n";
+        }
+
+        const auto cur_landmarks = curr_keyfrm->get_landmarks();
+        for (unsigned int idx = 0; idx < cur_landmarks.size(); ++idx) {
+            const auto& lm = cur_landmarks.at(idx);
+            if (!lm) {
+                continue;
+            }
+            if (lm->will_be_erased()) {
+                continue;
+            }
+
+            const auto& kp = curr_keyfrm->frm_obs_.undist_keypts_.at(idx);
+            const bool is_outlier = static_cast<bool>(outlier_lm_ids_in_curr_keyfrm.count(lm->id_));
+            const unsigned int num_obs =
+                (is_outlier && 0 < lm->num_observations()) ? lm->num_observations() - 1 : lm->num_observations();
+
+            csv_file << curr_keyfrm->id_ << ","
+                     << curr_keyfrm->src_frm_id_ << ","
+                     << lm->id_ << ","
+                     << kp.pt.x << ","
+                     << kp.pt.y << ","
+                     << num_obs << ","
+                     << (is_outlier ? 1 : 0) << "\n";
+        }
+
+        csv_file.close();
+    }
+    else {
+        spdlog::warn("failed to open file: matches/mapping_with_new_keyframe.csv");
     }
 
     // 8. Update the information

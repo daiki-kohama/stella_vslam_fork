@@ -448,6 +448,57 @@ bool tracking_module::optimize_current_frame_with_local_map(unsigned int& num_tr
     pose_optimizer_->optimize(curr_frm_, optimized_pose, outlier_flags);
     curr_frm_.set_pose_cw(optimized_pose);
 
+    // Write tracked landmarks to CSV (before outlier rejection)
+    constexpr auto matches_dir = "matches";
+#ifdef _WIN32
+    _mkdir(matches_dir);
+#else
+    if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
+        spdlog::warn("failed to create directory {}", matches_dir);
+    }
+#endif
+
+    std::ofstream csv_file("matches/optimize_current_frame_with_local_map.csv", std::ios::app);
+    if (csv_file.is_open()) {
+        // Write header if file is empty
+        csv_file.seekp(0, std::ios::end);
+        bool is_empty = csv_file.tellp() == 0;
+        csv_file.seekp(0, std::ios::end);
+
+        if (is_empty) {
+            csv_file << "frm_id,landmark_id,u,v,is_reliable,is_outlier\n";
+        }
+
+        // Write tracked landmarks
+        for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.undist_keypts_.size(); ++idx) {
+            const auto& lm = curr_frm_.get_landmark(idx);
+            if (!lm) {
+                continue;
+            }
+            if (lm->will_be_erased()) {
+                continue;
+            }
+
+            const auto& kp = curr_frm_.frm_obs_.undist_keypts_.at(idx);
+            const bool is_outlier = idx < outlier_flags.size() ? outlier_flags.at(idx) : false;
+            const unsigned int expected_num_observations =
+                (is_outlier && 0 < lm->num_observations()) ? lm->num_observations() - 1 : lm->num_observations();
+            const bool is_reliable = (0 < min_num_obs_thr && min_num_obs_thr <= expected_num_observations);
+
+            csv_file << curr_frm_.id_ << ","
+                     << lm->id_ << ","
+                     << kp.pt.x << ","
+                     << kp.pt.y << ","
+                     << (is_reliable ? 1 : 0) << ","
+                     << (is_outlier ? 1 : 0) << "\n";
+        }
+
+        csv_file.close();
+    }
+    else {
+        spdlog::warn("failed to open file: matches/optimize_current_frame_with_local_map.csv");
+    }
+
     // Reject outliers
     for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.undist_keypts_.size(); ++idx) {
         if (!outlier_flags.at(idx)) {
@@ -479,53 +530,6 @@ bool tracking_module::optimize_current_frame_with_local_map(unsigned int& num_tr
         ++num_tracked_lms;
         // increment the number of tracked frame
         lm->increase_num_observed();
-    }
-
-    // Write tracked landmarks to CSV
-    constexpr auto matches_dir = "matches";
-#ifdef _WIN32
-    _mkdir(matches_dir);
-#else
-    if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
-        spdlog::warn("failed to create directory {}", matches_dir);
-    }
-#endif
-
-    std::ofstream csv_file("matches/optimize_current_frame_with_local_map.csv", std::ios::app);
-    if (csv_file.is_open()) {
-        // Write header if file is empty
-        csv_file.seekp(0, std::ios::end);
-        bool is_empty = csv_file.tellp() == 0;
-        csv_file.seekp(0, std::ios::end);
-
-        if (is_empty) {
-            csv_file << "frm_id,landmark_id,u,v,is_reliable\n";
-        }
-
-        // Write tracked landmarks
-        for (unsigned int idx = 0; idx < curr_frm_.frm_obs_.undist_keypts_.size(); ++idx) {
-            const auto& lm = curr_frm_.get_landmark(idx);
-            if (!lm) {
-                continue;
-            }
-            if (lm->will_be_erased()) {
-                continue;
-            }
-
-            const auto& kp = curr_frm_.frm_obs_.undist_keypts_.at(idx);
-            bool is_reliable = (0 < min_num_obs_thr && min_num_obs_thr <= lm->num_observations());
-
-            csv_file << curr_frm_.id_ << ","
-                     << lm->id_ << ","
-                     << kp.pt.x << ","
-                     << kp.pt.y << ","
-                     << (is_reliable ? 1 : 0) << "\n";
-        }
-
-        csv_file.close();
-    }
-    else {
-        spdlog::warn("failed to open file: matches/optimize_current_frame_with_local_map.csv");
     }
 
     constexpr unsigned int num_tracked_lms_thr = 20;

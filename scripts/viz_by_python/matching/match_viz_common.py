@@ -30,6 +30,7 @@ def load_matches_from_csv(csv_path):
             frm2_v = float(row["frm2_v"])
             frm2_octave = int(row["frm2_octave"])
             frm2_response = float(row["frm2_response"])
+            is_outlier = str(row.get("is_outlier", "0")).strip() in {"1", "true", "True"}
 
             match_data = {
                 "frm1_pt": (frm1_u, frm1_v),
@@ -38,6 +39,7 @@ def load_matches_from_csv(csv_path):
                 "frm2_pt": (frm2_u, frm2_v),
                 "frm2_octave": frm2_octave,
                 "frm2_response": frm2_response,
+                "is_outlier": is_outlier,
             }
             matches[(frm1_id, frm2_id)].append(match_data)
 
@@ -80,6 +82,9 @@ def draw_matches_on_frames(frm1, frm2, matches_list, scale_by_response=False, re
     random.seed(0)
 
     for match_data in matches_list:
+        if match_data.get("is_outlier", False):
+            continue
+
         frm1_pt = match_data["frm1_pt"]
         frm2_pt = match_data["frm2_pt"]
         frm1_response = match_data["frm1_response"]
@@ -125,10 +130,11 @@ def load_local_map_points_from_csv(csv_path):
                 frm_id = int(row["frm_id"])
                 u = float(row["u"])
                 v = float(row["v"])
+                is_outlier = str(row.get("is_outlier", "0")).strip() in {"1", "true", "True"}
             except (TypeError, ValueError, KeyError):
                 continue
 
-            points_by_frame.setdefault(frm_id, []).append((u, v))
+            points_by_frame.setdefault(frm_id, []).append((u, v, is_outlier))
 
     return points_by_frame
 
@@ -150,10 +156,11 @@ def load_mapping_points_from_csv(csv_path):
                 frm_id = int(row["frm_id"])
                 u = float(row["u"])
                 v = float(row["v"])
+                is_outlier = str(row.get("is_outlier", "0")).strip() in {"1", "true", "True"}
             except (TypeError, ValueError, KeyError):
                 continue
 
-            points_by_frame.setdefault(frm_id, []).append((u, v))
+            points_by_frame.setdefault(frm_id, []).append((u, v, is_outlier))
 
     return points_by_frame
 
@@ -163,10 +170,14 @@ def draw_local_map_points(img, points_by_frame, frm1_id, frm2_id, h1):
     if points_by_frame is None:
         return
     
-    for u, v in points_by_frame.get(frm1_id, []):
+    for u, v, is_outlier in points_by_frame.get(frm1_id, []):
+        if is_outlier:
+            continue
         cv2.circle(img, (int(round(u)), int(round(v))), 3, (0, 255, 0), 1)
     
-    for u, v in points_by_frame.get(frm2_id, []):
+    for u, v, is_outlier in points_by_frame.get(frm2_id, []):
+        if is_outlier:
+            continue
         cv2.circle(img, (int(round(u)), int(round(v + h1))), 3, (0, 255, 0), 1)
 
 
@@ -175,8 +186,12 @@ def draw_mapping_points(img, points_by_frame, frm1_id, frm2_id, h1):
     if points_by_frame is None:
         return
     
-    for u, v in points_by_frame.get(frm1_id, []):
+    for u, v, is_outlier in points_by_frame.get(frm1_id, []):
+        if is_outlier:
+            continue
         cv2.circle(img, (int(round(u)), int(round(v))), 4, (0, 0, 255), 1)
     
-    for u, v in points_by_frame.get(frm2_id, []):
+    for u, v, is_outlier in points_by_frame.get(frm2_id, []):
+        if is_outlier:
+            continue
         cv2.circle(img, (int(round(u)), int(round(v + h1))), 4, (0, 0, 255), 1)

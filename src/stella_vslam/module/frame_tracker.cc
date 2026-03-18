@@ -24,6 +24,7 @@ namespace module {
 
 void write_matches_to_csv(const std::string& filename, unsigned int frm1_id, unsigned int frm2_id,
                           const data::frame& frm1, const data::frame& frm2,
+                          const std::vector<bool>& outlier_flags,
                           const std::shared_ptr<data::keyframe>& keyfrm = nullptr) {
     // Open file in append mode
     std::ofstream file(filename, std::ios::app);
@@ -38,7 +39,7 @@ void write_matches_to_csv(const std::string& filename, unsigned int frm1_id, uns
     file.seekp(0, std::ios::end);
 
     if (is_empty) {
-        file << "frm1_id,frm2_id,frm1_u,frm1_v,frm1_octave,frm1_response,frm2_u,frm2_v,frm2_octave,frm2_response\n";
+        file << "frm1_id,frm2_id,frm1_u,frm1_v,frm1_octave,frm1_response,frm2_u,frm2_v,frm2_octave,frm2_response,is_outlier\n";
     }
 
     // Write matching points
@@ -66,7 +67,8 @@ void write_matches_to_csv(const std::string& filename, unsigned int frm1_id, uns
         }
 
         const auto& frm2_kp = (keyfrm != nullptr) ? keyfrm->frm_obs_.undist_keypts_.at(frm2_idx) : frm2.frm_obs_.undist_keypts_.at(frm2_idx);
-        file << frm1_id << "," << frm2_id << "," << frm1_kp.pt.x << "," << frm1_kp.pt.y << "," << frm1_kp.octave << "," << frm1_kp.response << "," << frm2_kp.pt.x << "," << frm2_kp.pt.y << "," << frm2_kp.octave << "," << frm2_kp.response << "\n";
+        const bool is_outlier = idx < outlier_flags.size() ? outlier_flags.at(idx) : false;
+        file << frm1_id << "," << frm2_id << "," << frm1_kp.pt.x << "," << frm1_kp.pt.y << "," << frm1_kp.octave << "," << frm1_kp.response << "," << frm2_kp.pt.x << "," << frm2_kp.pt.y << "," << frm2_kp.octave << "," << frm2_kp.response << "," << (is_outlier ? 1 : 0) << "\n";
     }
 
     file.close();
@@ -105,6 +107,19 @@ bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame&
     pose_optimizer_->optimize(curr_frm, optimized_pose, outlier_flags);
     curr_frm.set_pose_cw(optimized_pose);
 
+    constexpr auto matches_dir = "matches";
+#ifdef _WIN32
+    _mkdir(matches_dir);
+    _mkdir(motion_based_tracking_dir);
+#else
+    if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
+        spdlog::warn("failed to create directory {}", matches_dir);
+    }
+#endif
+
+    // Write matches to CSV with outlier status (before outlier discard)
+    write_matches_to_csv("matches/motion_based_tracking.csv", curr_frm.id_, last_frm.id_, curr_frm, last_frm, outlier_flags);
+
     // Discard the outliers
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
@@ -113,19 +128,7 @@ bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame&
         return false;
     }
     else {
-        constexpr auto matches_dir = "matches";
-#ifdef _WIN32
-        _mkdir(matches_dir);
-        _mkdir(motion_based_tracking_dir);
-#else
-        if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
-            spdlog::warn("failed to create directory {}", matches_dir);
-        }
-#endif
-        // Write matches to CSV
-        write_matches_to_csv("matches/motion_based_tracking.csv", curr_frm.id_, last_frm.id_, curr_frm, last_frm);
-
-        spdlog::debug("motion based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
+        // spdlog::debug("motion based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }
@@ -154,6 +157,19 @@ bool frame_tracker::bow_match_based_track(data::frame& curr_frm, const data::fra
     pose_optimizer_->optimize(curr_frm, optimized_pose, outlier_flags);
     curr_frm.set_pose_cw(optimized_pose);
 
+    constexpr auto matches_dir = "matches";
+#ifdef _WIN32
+    _mkdir(matches_dir);
+    _mkdir(bow_match_based_tracking_dir);
+#else
+    if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
+        spdlog::warn("failed to create directory {}", matches_dir);
+    }
+#endif
+
+    // Write matches to CSV with outlier status (before outlier discard)
+    write_matches_to_csv("matches/bow_match_based_tracking.csv", curr_frm.id_, ref_keyfrm->src_frm_id_, curr_frm, last_frm, outlier_flags, ref_keyfrm);
+
     // Discard the outliers
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
@@ -162,19 +178,7 @@ bool frame_tracker::bow_match_based_track(data::frame& curr_frm, const data::fra
         return false;
     }
     else {
-        constexpr auto matches_dir = "matches";
-#ifdef _WIN32
-        _mkdir(matches_dir);
-        _mkdir(bow_match_based_tracking_dir);
-#else
-        if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
-            spdlog::warn("failed to create directory {}", matches_dir);
-        }
-#endif
-        // Write matches to CSV
-        write_matches_to_csv("matches/bow_match_based_tracking.csv", curr_frm.id_, ref_keyfrm->src_frm_id_, curr_frm, last_frm, ref_keyfrm);
-
-        spdlog::debug("bow match based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
+        // spdlog::debug("bow match based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }
@@ -203,6 +207,19 @@ bool frame_tracker::robust_match_based_track(data::frame& curr_frm, const data::
     pose_optimizer_->optimize(curr_frm, optimized_pose, outlier_flags);
     curr_frm.set_pose_cw(optimized_pose);
 
+    constexpr auto matches_dir = "matches";
+#ifdef _WIN32
+    _mkdir(matches_dir);
+    _mkdir(robust_match_based_tracking_dir);
+#else
+    if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
+        spdlog::warn("failed to create directory {}", matches_dir);
+    }
+#endif
+
+    // Write matches to CSV with outlier status (before outlier discard)
+    write_matches_to_csv("matches/robust_match_based_tracking.csv", curr_frm.id_, ref_keyfrm->src_frm_id_, curr_frm, last_frm, outlier_flags, ref_keyfrm);
+
     // Discard the outliers
     const auto num_valid_matches = discard_outliers(outlier_flags, curr_frm);
 
@@ -211,19 +228,7 @@ bool frame_tracker::robust_match_based_track(data::frame& curr_frm, const data::
         return false;
     }
     else {
-        constexpr auto matches_dir = "matches";
-#ifdef _WIN32
-        _mkdir(matches_dir);
-        _mkdir(robust_match_based_tracking_dir);
-#else
-        if (mkdir(matches_dir, 0775) != 0 && errno != EEXIST) {
-            spdlog::warn("failed to create directory {}", matches_dir);
-        }
-#endif
-        // Write matches to CSV
-        write_matches_to_csv("matches/robust_match_based_tracking.csv", curr_frm.id_, ref_keyfrm->src_frm_id_, curr_frm, last_frm, ref_keyfrm);
-
-        spdlog::debug("robust match based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
+        // spdlog::debug("robust match based tracking succeeded: {} inlier matches >= {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }
