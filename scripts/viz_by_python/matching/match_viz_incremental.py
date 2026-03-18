@@ -4,7 +4,6 @@ import cv2
 import argparse
 import os
 import math
-import csv
 from pathlib import Path
 from match_viz_common import (
     load_matches_from_csv,
@@ -57,6 +56,13 @@ def main():
         type=str,
         default=None,
         help="Optional CSV (keyfrm_id,frm_id,lm_id,u,v,num_observations) generated from mapping_with_new_keyframe. If provided, points are overlaid as red radius-4 circles.",
+    )
+    parser.add_argument(
+        "--show",
+        type=str,
+        choices=["inlier", "outlier"],
+        default="inlier",
+        help="Which points to display: inlier or outlier (default: inlier)",
     )
 
     args = parser.parse_args()
@@ -128,11 +134,28 @@ def main():
             pair_idx += 1
             continue
 
+        # Filter by requested mode (inlier / outlier)
+        filtered_matches_data = [
+            m
+            for m in matches_data
+            if (m.get("is_outlier", False) if args.show == "outlier" else not m.get("is_outlier", False))
+        ]
+
         # Calculate number of batches needed
-        num_matches = len(matches_data)
+        num_matches = len(filtered_matches_data)
+        if num_matches == 0:
+            print(
+                f"\n[{pair_idx + 1}/{len(matches_list)}] Frames {frm1_id} and {frm2_id}: "
+                f"no {args.show} matches"
+            )
+            pair_idx += 1
+            continue
         num_batches = math.ceil(num_matches / args.n)
 
-        print(f"\n[{pair_idx + 1}/{len(matches_list)}] Processing frames {frm1_id} and {frm2_id}: {num_matches} matches in {num_batches} batch(es)")
+        print(
+            f"\n[{pair_idx + 1}/{len(matches_list)}] Processing frames {frm1_id} and {frm2_id}: "
+            f"{num_matches} {args.show} matches in {num_batches} batch(es)"
+        )
         print("Controls: SPACE/n=next pair, b/p=prev pair, ]/>=+5 pairs, [/<=-5 pairs, 1=+10 pairs, 2=-10 pairs, 3=+100 pairs, 4=-100 pairs")
         print("         .=next batch, ,=prev batch, q=quit")
 
@@ -141,19 +164,24 @@ def main():
         while batch_idx < num_batches:
             start_idx = batch_idx * args.n
             end_idx = min(start_idx + args.n, num_matches)
-            batch_matches = matches_data[start_idx:end_idx]
+            batch_matches = filtered_matches_data[start_idx:end_idx]
 
             # Draw matches for this batch
             img_with_matches = draw_matches_on_frames(
                 frm1, frm2, batch_matches,
                 scale_by_response=args.scale_by_response,
-                response_scale=args.response_scale
+                response_scale=args.response_scale,
+                show_mode=args.show,
             )
 
             # Overlay additional points if CSVs are provided
             h1 = frm1.shape[0]
-            draw_local_map_points(img_with_matches, local_map_points, frm1_id, frm2_id, h1)
-            draw_mapping_points(img_with_matches, mapping_points, frm1_id, frm2_id, h1)
+            draw_local_map_points(
+                img_with_matches, local_map_points, frm1_id, frm2_id, h1, show_mode=args.show
+            )
+            draw_mapping_points(
+                img_with_matches, mapping_points, frm1_id, frm2_id, h1, show_mode=args.show
+            )
 
             if args.output_dir:
                 # Save to file

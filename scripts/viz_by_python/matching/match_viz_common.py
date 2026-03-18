@@ -64,7 +64,14 @@ def get_frame_from_video(video_path, frame_id):
     return frame if ret else None
 
 
-def draw_matches_on_frames(frm1, frm2, matches_list, scale_by_response=False, response_scale=1.0):
+def draw_matches_on_frames(
+    frm1,
+    frm2,
+    matches_list,
+    scale_by_response=False,
+    response_scale=1.0,
+    show_mode="inlier",
+):
     """Draw matching points on concatenated frames.
 
     Args:
@@ -73,6 +80,7 @@ def draw_matches_on_frames(frm1, frm2, matches_list, scale_by_response=False, re
         matches_list: List of match dicts with keypoint and feature info
         scale_by_response: Whether to scale circle radius by response value
         response_scale: Scaling factor for response-based radius adjustment
+        show_mode: Which points to show: "inlier" or "outlier"
 
     Returns:
         Concatenated image with drawn matches
@@ -82,7 +90,10 @@ def draw_matches_on_frames(frm1, frm2, matches_list, scale_by_response=False, re
     random.seed(0)
 
     for match_data in matches_list:
-        if match_data.get("is_outlier", False):
+        is_outlier = match_data.get("is_outlier", False)
+        if show_mode == "inlier" and is_outlier:
+            continue
+        if show_mode == "outlier" and not is_outlier:
             continue
 
         frm1_pt = match_data["frm1_pt"]
@@ -165,33 +176,41 @@ def load_mapping_points_from_csv(csv_path):
     return points_by_frame
 
 
-def draw_local_map_points(img, points_by_frame, frm1_id, frm2_id, h1):
+def draw_local_map_points(img, points_by_frame, frm1_id, frm2_id, h1, show_mode="inlier"):
     """Draw local-map tracking points as green circles (radius 3)."""
     if points_by_frame is None:
         return
     
     for u, v, is_outlier in points_by_frame.get(frm1_id, []):
-        if is_outlier:
+        if show_mode == "inlier" and is_outlier:
+            continue
+        if show_mode == "outlier" and not is_outlier:
             continue
         cv2.circle(img, (int(round(u)), int(round(v))), 3, (0, 255, 0), 1)
     
     for u, v, is_outlier in points_by_frame.get(frm2_id, []):
-        if is_outlier:
+        if show_mode == "inlier" and is_outlier:
+            continue
+        if show_mode == "outlier" and not is_outlier:
             continue
         cv2.circle(img, (int(round(u)), int(round(v + h1))), 3, (0, 255, 0), 1)
 
 
-def draw_mapping_points(img, points_by_frame, frm1_id, frm2_id, h1):
+def draw_mapping_points(img, points_by_frame, frm1_id, frm2_id, h1, show_mode="inlier"):
     """Draw mapping keyframe points as red circles (radius 4)."""
     if points_by_frame is None:
         return
     
     for u, v, is_outlier in points_by_frame.get(frm1_id, []):
-        if is_outlier:
+        if show_mode == "inlier" and is_outlier:
+            continue
+        if show_mode == "outlier" and not is_outlier:
             continue
         cv2.circle(img, (int(round(u)), int(round(v))), 4, (0, 0, 255), 1)
     
     for u, v, is_outlier in points_by_frame.get(frm2_id, []):
-        if is_outlier:
+        if show_mode == "inlier" and is_outlier:
+            continue
+        if show_mode == "outlier" and not is_outlier:
             continue
         cv2.circle(img, (int(round(u)), int(round(v + h1))), 4, (0, 0, 255), 1)
