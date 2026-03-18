@@ -355,7 +355,7 @@ keyframe_sets loop_detector::find_continuously_detected_keyframe_sets(const keyf
     return curr_cont_detected_keyfrm_sets;
 }
 
-bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std::shared_ptr<data::keyframe>>& loop_candidates,
+bool loop_detector::select_loop_candidate_via_Sim3(const nondeterministic::unordered_set<std::shared_ptr<data::keyframe>>& loop_candidates,
                                                    std::shared_ptr<data::keyframe>& selected_candidate,
                                                    g2o::Sim3& g2o_Sim3_world_to_curr,
                                                    std::vector<std::shared_ptr<data::landmark>>& curr_match_lms_observed_in_cand) const {
@@ -366,6 +366,8 @@ bool loop_detector::select_loop_candidate_via_Sim3(const std::unordered_set<std:
     match::robust robust_matcher(0.75, false);
     match::bow_tree bow_matcher(0.75, false);
     match::projection projection_matcher(0.75, false);
+
+    spdlog::debug("select_loop_candidate_via_Sim3: loop_candidates size={}", loop_candidates.size());
 
     for (const auto& candidate : loop_candidates) {
         if (candidate->will_be_erased()) {
