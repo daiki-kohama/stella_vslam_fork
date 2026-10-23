@@ -69,3 +69,8 @@ LoopDetector:
   enabled: false
   reject_by_graph_distance: true
   min_distance_on_graph: 50
+
+
+System:
+  map_format: "msgpack"
+  save_frames: true
